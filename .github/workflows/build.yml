@@ -7,6 +7,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -33,3 +35,10 @@ jobs:
         with:
           name: DersTV-apk
           path: app/build/outputs/apk/release/*.apk
+
+      - name: APK'yi Releases sayfasinda yayinla
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk DersTV.apk
+          gh release create "v${{ github.run_number }}" DersTV.apk --title "Ders TV (derleme ${{ github.run_number }})" --notes "Otomatik derleme. DersTV.apk dosyasini indirip TV'ye kurun." --latest

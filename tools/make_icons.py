@@ -25,8 +25,8 @@ for y in range(H):
     d.line([(0, y), (W, y)], fill=(int(40 + 60 * t), int(20 + 10 * t), int(70 + 60 * t)))
 d.ellipse([28 * S, 50 * S, 108 * S, 130 * S], fill=(164, 53, 240))
 play(d, 68 * S, 90 * S, 30 * S, (255, 255, 255))
-d.text((122 * S, 62 * S), "Ders TV", font=font(40 * S), fill="white")
-d.text((124 * S, 110 * S), "Udemy için", font=font(17 * S), fill=(220, 205, 240))
+d.text((118 * S, 62 * S), "Udemy TV", font=font(30 * S), fill="white")
+d.text((122 * S, 104 * S), "Kurslarım", font=font(17 * S), fill=(220, 205, 240))
 im.resize((320, 180), Image.LANCZOS).save(os.path.join(res, "drawable", "banner.png"))
 
 for name, sz in [("mipmap-xhdpi", 96), ("mipmap-xxhdpi", 144)]:

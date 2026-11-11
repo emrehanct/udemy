@@ -115,7 +115,7 @@ public class MainActivity extends Activity {
         root.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
             @Override
             public void onLayoutChange(View v, int l, int t, int r, int b, int ol, int ot, int or, int ob) {
-                if ((r - l) != (or - ol) || (b - t) != (ob - ot)) {
+                if (!nudging && ((r - l) != (or - ol) || (b - t) != (ob - ot))) {
                     handler.removeCallbacks(relayout);
                     handler.postDelayed(relayout, 250);
                 }
@@ -129,6 +129,8 @@ public class MainActivity extends Activity {
                 cursor.moveTo(cx, cy);
             }
         });
+
+        handler.postDelayed(viewportGuard, 3000);
 
         if (savedInstanceState != null) {
             web.restoreState(savedInstanceState);
@@ -173,6 +175,7 @@ public class MainActivity extends Activity {
 
             @Override
             public void onPageFinished(WebView view, String url) {
+                viewportFixes = 0;
                 applyViewport();
                 updateModeForUrl(url);
                 CookieManager.getInstance().flush();
@@ -181,6 +184,7 @@ public class MainActivity extends Activity {
             @Override
             public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
                 // Udemy tek sayfa uygulaması; ders değişimleri burada yakalanır.
+                viewportFixes = 0;
                 applyViewport();
                 updateModeForUrl(url);
             }
@@ -494,6 +498,7 @@ public class MainActivity extends Activity {
     private static final String[] ZOOM_NAME = {"Ekrana sığdır", "Ekranı doldur", "Yakınlaştır 1.2x", "Yakınlaştır 1.4x"};
     /** Kullanıcı tam ekran istiyor mu? (▼ veya Geri ile kapatılana kadar true) */
     private boolean wantFull = false;
+    private int fullBadCount = 0;
 
     private final Runnable autoFullscreen = new Runnable() {
         @Override public void run() {
@@ -510,10 +515,19 @@ public class MainActivity extends Activity {
                         + "if(!c||!document.getElementById('derstv-full'))return 'lost';"
                         + "var vs=document.querySelectorAll('video'),v=null,b=0;"
                         + "for(var i=0;i<vs.length;i++){var r=vs[i].getBoundingClientRect(),s=r.width*r.height;if(s>=b){b=s;v=vs[i];}}"
-                        + "if(v&&!c.contains(v))return 'lost';return 'ok';})()";
+                        + "if(!v||!c.contains(v)||!v.hasAttribute('data-derstv-vid'))return 'lost';"
+                        + "var vr=v.getBoundingClientRect();"
+                        + "if(vr.width<innerWidth*0.9||vr.height<innerHeight*0.9)return 'small';return 'ok';})()";
                 web.evaluateJavascript(js, new ValueCallback<String>() {
                     @Override public void onReceiveValue(String v) {
-                        if (wantFull && videoMode && customView == null && v != null && v.contains("lost")) {
+                        if (!wantFull || !videoMode || customView != null || v == null) return;
+                        if (v.contains("ok")) { fullBadCount = 0; return; }
+                        fullBadCount++;
+                        // Önce tam ekranı yeniden kur; hâlâ küçükse sayfa yüksekliğini yeniden hesaplat.
+                        if (fullBadCount >= 2 && v.contains("small")) {
+                            viewportFixes = 0;
+                            nudgeWebView();
+                        } else {
                             applyCssFullscreen(true, true);
                         }
                     }
@@ -592,6 +606,7 @@ public class MainActivity extends Activity {
     /** Videoyu (oynatıcı kutusuyla birlikte) tüm ekrana yayar ve bekçiyi başlatır. */
     private void enterFullscreen() {
         wantFull = true;
+        fullBadCount = 0;
         applyCssFullscreen(true, false);
         handler.removeCallbacks(fullWatchdog);
         handler.postDelayed(fullWatchdog, 1500);
@@ -614,8 +629,8 @@ public class MainActivity extends Activity {
     /** Oynatıcı kutusunu (video + altyazı + kontroller) sabit konumla tüm ekrana yayar. */
     private void applyCssFullscreen(final boolean on, final boolean silent) {
         String js = "(function(on){var id='derstv-full',o=document.getElementById(id);if(o)o.remove();"
-                + "var ms=document.querySelectorAll('[data-derstv-full],[data-derstv-anc],[data-derstv-vid]');"
-                + "for(var k=0;k<ms.length;k++){ms[k].removeAttribute('data-derstv-full');ms[k].removeAttribute('data-derstv-anc');ms[k].removeAttribute('data-derstv-vid');}"
+                + "var ms=document.querySelectorAll('[data-derstv-full],[data-derstv-anc],[data-derstv-vid],[data-derstv-chain]');"
+                + "for(var k=0;k<ms.length;k++){ms[k].removeAttribute('data-derstv-full');ms[k].removeAttribute('data-derstv-anc');ms[k].removeAttribute('data-derstv-vid');ms[k].removeAttribute('data-derstv-chain');}"
                 + "if(!on)return 'off';"
                 + "var vs=document.querySelectorAll('video'),v=null,b=0;"
                 + "for(var i=0;i<vs.length;i++){var r=vs[i].getBoundingClientRect(),s=r.width*r.height;if(s>=b){b=s;v=vs[i];}}"
@@ -624,6 +639,7 @@ public class MainActivity extends Activity {
                 + "while(p&&p!==document.body){var pr=p.getBoundingClientRect();"
                 + "if(pr.width>vr.width*1.15+4||pr.height>vr.height*1.35+4)break;c=p;p=p.parentElement;}"
                 + "c.setAttribute('data-derstv-full','1');v.setAttribute('data-derstv-vid','1');"
+                + "var q=v.parentElement;while(q&&q!==c){q.setAttribute('data-derstv-chain','1');q=q.parentElement;}"
                 + "var a=v.parentElement;while(a){a.setAttribute('data-derstv-anc','1');a=a.parentElement;}"
                 + "var st=document.createElement('style');st.id=id;"
                 + "st.textContent='html,body{overflow:hidden!important;background:#000!important}'"
@@ -633,6 +649,8 @@ public class MainActivity extends Activity {
                 + "+'[data-derstv-full]{position:fixed!important;left:0!important;top:0!important;right:0!important;bottom:0!important;"
                 + "width:auto!important;height:auto!important;max-width:none!important;max-height:none!important;"
                 + "margin:0!important;z-index:2147483647!important;background:#000!important;transform:none!important}'"
+                + "+'[data-derstv-chain]{width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;"
+                + "min-height:0!important;padding-top:0!important;padding-bottom:0!important;aspect-ratio:auto!important;margin:0!important}'"
                 + "+'[data-derstv-vid]{position:fixed!important;left:0!important;top:0!important;right:0!important;bottom:0!important;"
                 + "width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;min-width:0!important;min-height:0!important;"
                 + "margin:0!important;padding:0!important;background:#000!important;object-fit:var(--dtv-fit,contain)!important;"
@@ -692,6 +710,7 @@ public class MainActivity extends Activity {
     private void cycleZoom() {
         widthIndex = (widthIndex + 1) % WIDTHS.length;
         prefs.edit().putInt("widthIndex", widthIndex).apply();
+        viewportFixes = 0;
         applyViewport();
         String[] names = {"Büyük", "Normal", "Küçük"};
         showHint("Yazı boyutu: " + names[widthIndex], 1500);
@@ -699,18 +718,65 @@ public class MainActivity extends Activity {
 
     /** Sayfayı TV için sabit bir masaüstü genişliğinde (vars. 1280 px) gösterir. */
     private void applyViewport() {
+        if (web.getWidth() <= 0 || web.getHeight() <= 0) return;
         float density = getResources().getDisplayMetrics().density;
-        int viewW = web.getWidth() > 0 ? web.getWidth() : getResources().getDisplayMetrics().widthPixels;
+        int viewW = root.getWidth() > 0 ? root.getWidth() : web.getWidth();
+        int viewH = root.getHeight() > 0 ? root.getHeight() : web.getHeight();
         int cssW = WIDTHS[widthIndex];
         float scale = (viewW / density) / cssW;
+        int cssH = Math.round((viewH / density) / scale);
         String content = String.format(Locale.US,
                 "width=%d, initial-scale=%.4f, minimum-scale=%.4f, maximum-scale=%.4f, user-scalable=no",
                 cssW, scale, scale, scale);
-        String js = "(function(c){var m=document.querySelector('meta[name=viewport]');"
+        // Ayar Udemy tarafından değiştirildiyse ya da sayfa yüksekliği ekrana uymuyorsa düzelt.
+        String js = String.format(Locale.US,
+                "(function(c,w,h){var m=document.querySelector('meta[name=viewport]'),ch=false;"
                 + "if(!m){m=document.createElement('meta');m.name='viewport';(document.head||document.documentElement).appendChild(m);}"
-                + "if(m.getAttribute('content')!==c)m.setAttribute('content',c);})('" + content + "')";
-        web.evaluateJavascript(js, null);
+                + "if(m.getAttribute('content')!==c){m.setAttribute('content',c);ch=true;}"
+                + "var d=document.documentElement;if(Math.abs(d.clientWidth-w)>8||Math.abs(d.clientHeight-h)>8)ch=true;"
+                + "return ch?'fix':'ok';})('%s',%d,%d)", content, cssW, cssH);
+        web.evaluateJavascript(js, new ValueCallback<String>() {
+            @Override public void onReceiveValue(String v) {
+                if (v != null && v.contains("fix")) {
+                    if (viewportFixes < 3) { viewportFixes++; nudgeWebView(); }
+                } else {
+                    viewportFixes = 0;
+                }
+            }
+        });
     }
+
+    private int viewportFixes = 0;
+    private boolean nudging = false;
+
+    /** WebView'i 2 piksel küçültüp geri büyütür: tarayıcı sayfa yüksekliğini yeniden hesaplar. */
+    private void nudgeWebView() {
+        if (nudging || root.getHeight() <= 2) return;
+        nudging = true;
+        final ViewGroup.LayoutParams lp = web.getLayoutParams();
+        lp.height = root.getHeight() - 2;
+        web.setLayoutParams(lp);
+        handler.postDelayed(new Runnable() {
+            @Override public void run() {
+                lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
+                web.setLayoutParams(lp);
+                nudging = false;
+                if (wantFull && videoMode) {
+                    handler.postDelayed(new Runnable() {
+                        @Override public void run() { if (wantFull && videoMode) applyCssFullscreen(true, true); }
+                    }, 300);
+                }
+            }
+        }, 150);
+    }
+
+    /** Ekran ölçüsünü düzenli kontrol eder (Udemy ders değişiminde ayarı bozabiliyor). */
+    private final Runnable viewportGuard = new Runnable() {
+        @Override public void run() {
+            if (!nudging) applyViewport();
+            handler.postDelayed(this, 2000);
+        }
+    };
 
     // ------------------------------------------------------------------ helpers
 
@@ -724,7 +790,7 @@ public class MainActivity extends Activity {
 
     private final Runnable relayout = new Runnable() {
         @Override public void run() {
-            web.requestLayout();
+            viewportFixes = 0;
             applyViewport();
             if (wantFull && videoMode) applyCssFullscreen(true, true);
         }

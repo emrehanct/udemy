@@ -1,39 +1,22 @@
 # Uygulama simgesi ve TV afişini üretir (GitHub Actions derlemesinde çalışır).
-from PIL import Image, ImageDraw, ImageFont
-import os
-
-def font(sz):
-    for p in ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-              "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"]:
-        if os.path.exists(p):
-            return ImageFont.truetype(p, sz)
-    return ImageFont.load_default()
-
-def play(d, cx, cy, r, col):
-    d.polygon([(cx - r * 0.45, cy - r * 0.6), (cx - r * 0.45, cy + r * 0.6), (cx + r * 0.6, cy)], fill=col)
+# tools/logo.b64 varsa (kullanıcının kendi logosu) simge ve afiş ondan üretilir.
+from PIL import Image, ImageDraw
+import base64, io, os
 
 res = "app/src/main/res"
-for sub in ["drawable", "mipmap-xhdpi", "mipmap-xxhdpi"]:
+for sub in ["drawable", "drawable-xhdpi", "mipmap-xhdpi", "mipmap-xxhdpi"]:
     os.makedirs(os.path.join(res, sub), exist_ok=True)
 
-S = 4
-W, H = 320 * S, 180 * S
-im = Image.new("RGB", (W, H))
-d = ImageDraw.Draw(im)
-for y in range(H):
-    t = y / H
-    d.line([(0, y), (W, y)], fill=(int(40 + 60 * t), int(20 + 10 * t), int(70 + 60 * t)))
-d.ellipse([28 * S, 50 * S, 108 * S, 130 * S], fill=(164, 53, 240))
-play(d, 68 * S, 90 * S, 30 * S, (255, 255, 255))
-d.text((118 * S, 62 * S), "Udemy TV", font=font(30 * S), fill="white")
-d.text((122 * S, 104 * S), "Kurslarım", font=font(17 * S), fill=(220, 205, 240))
-im.resize((320, 180), Image.LANCZOS).save(os.path.join(res, "drawable", "banner.png"))
+logo = Image.open(io.BytesIO(base64.b64decode(open("tools/logo.b64").read()))).convert("RGB")
 
-for name, sz in [("mipmap-xhdpi", 96), ("mipmap-xxhdpi", 144)]:
-    S2 = sz * 4
-    ic = Image.new("RGBA", (S2, S2), (0, 0, 0, 0))
-    d = ImageDraw.Draw(ic)
-    d.rounded_rectangle([0, 0, S2 - 1, S2 - 1], radius=S2 // 5, fill=(164, 53, 240))
-    play(d, S2 / 2 + S2 * 0.04, S2 / 2, S2 * 0.42, (255, 255, 255))
-    ic.resize((sz, sz), Image.LANCZOS).save(os.path.join(res, name, "ic_launcher.png"))
+# TV ana ekran afişi: siyah zemin, logo ortada
+for sub, (W, H) in [("drawable", (320, 180)), ("drawable-xhdpi", (640, 360))]:
+    bg = Image.new("RGB", (W, H), (0, 0, 0))
+    s = int(H * 0.96)
+    bg.paste(logo.resize((s, s), Image.LANCZOS), ((W - s) // 2, (H - s) // 2))
+    bg.save(os.path.join(res, sub, "banner.png"))
+
+# Uygulama simgesi
+for sub, sz in [("mipmap-xhdpi", 96), ("mipmap-xxhdpi", 144)]:
+    logo.resize((sz, sz), Image.LANCZOS).save(os.path.join(res, sub, "ic_launcher.png"))
 print("simgeler hazir")

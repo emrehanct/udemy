@@ -111,6 +111,17 @@ public class MainActivity extends Activity {
         setContentView(root);
         setupWebView();
 
+        // Ekran boyutu değişirse (ör. TV klavyesi açılıp kapanınca) sayfayı yeniden tam ekrana ölçekle.
+        root.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+            @Override
+            public void onLayoutChange(View v, int l, int t, int r, int b, int ol, int ot, int or, int ob) {
+                if ((r - l) != (or - ol) || (b - t) != (ob - ot)) {
+                    handler.removeCallbacks(relayout);
+                    handler.postDelayed(relayout, 250);
+                }
+            }
+        });
+
         root.post(new Runnable() {
             @Override public void run() {
                 cx = root.getWidth() / 2f;
@@ -326,6 +337,8 @@ public class MainActivity extends Activity {
                 else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) videoCommand(String.valueOf(SEEK_SEC));
                 else if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
                     if (e.getRepeatCount() == 0) toggleFullscreen();
+                } else if (isFullscreen()) {
+                    if (e.getRepeatCount() == 0) cycleVideoZoom();
                 } else setVideoMode(false, true);
                 return true;
             }
@@ -465,7 +478,7 @@ public class MainActivity extends Activity {
         }
         if (announce) {
             if (on) {
-                showHint("Video modu  •  OK: oynat/durdur  •  ◀ ▶: 10 sn  •  ▼: tam ekran  •  ▲: imleç", 4000);
+                showHint("Video modu  •  OK: oynat/durdur  •  ◀ ▶: 10 sn  •  ▼: tam ekran  •  ▲: imleç (tam ekranda: yakınlaştır)", 4000);
             } else {
                 showHint("İmleç modu  •  Uzun OK: video modu", 2000);
             }
@@ -475,6 +488,10 @@ public class MainActivity extends Activity {
     // ------------------------------------------------------------------ fullscreen
 
     private boolean cssFull = false;
+    /** Tam ekran görüntü modları: object-fit + büyütme oranı */
+    private static final String[] ZOOM_FIT = {"contain", "cover", "contain", "contain"};
+    private static final float[] ZOOM_SCALE = {1f, 1f, 1.2f, 1.4f};
+    private static final String[] ZOOM_NAME = {"Ekrana sığdır", "Ekranı doldur", "Yakınlaştır 1.2x", "Yakınlaştır 1.4x"};
     /** Kullanıcı tam ekran istiyor mu? (▼ veya Geri ile kapatılana kadar true) */
     private boolean wantFull = false;
 
@@ -547,6 +564,27 @@ public class MainActivity extends Activity {
         return customView != null || wantFull;
     }
 
+    private int zoomIndex() {
+        int z = prefs.getInt("videoZoom", 0);
+        return (z < 0 || z >= ZOOM_FIT.length) ? 0 : z;
+    }
+
+    /** Tam ekranda ▲: Sığdır → Doldur → 1.2x → 1.4x */
+    private void cycleVideoZoom() {
+        int z = (zoomIndex() + 1) % ZOOM_FIT.length;
+        prefs.edit().putInt("videoZoom", z).apply();
+        applyVideoZoom();
+        showHint("Görüntü: " + ZOOM_NAME[z] + "  •  ▲: değiştir", 1800);
+    }
+
+    private void applyVideoZoom() {
+        int z = zoomIndex();
+        String js = String.format(Locale.US,
+                "(function(){var d=document.documentElement.style;d.setProperty('--dtv-fit','%s');d.setProperty('--dtv-scale','%.2f');})()",
+                ZOOM_FIT[z], ZOOM_SCALE[z]);
+        web.evaluateJavascript(js, null);
+    }
+
     private void toggleFullscreen() {
         if (isFullscreen()) exitFullscreen(); else enterFullscreen();
     }
@@ -576,8 +614,8 @@ public class MainActivity extends Activity {
     /** Oynatıcı kutusunu (video + altyazı + kontroller) sabit konumla tüm ekrana yayar. */
     private void applyCssFullscreen(final boolean on, final boolean silent) {
         String js = "(function(on){var id='derstv-full',o=document.getElementById(id);if(o)o.remove();"
-                + "var ms=document.querySelectorAll('[data-derstv-full],[data-derstv-anc]');"
-                + "for(var k=0;k<ms.length;k++){ms[k].removeAttribute('data-derstv-full');ms[k].removeAttribute('data-derstv-anc');}"
+                + "var ms=document.querySelectorAll('[data-derstv-full],[data-derstv-anc],[data-derstv-vid]');"
+                + "for(var k=0;k<ms.length;k++){ms[k].removeAttribute('data-derstv-full');ms[k].removeAttribute('data-derstv-anc');ms[k].removeAttribute('data-derstv-vid');}"
                 + "if(!on)return 'off';"
                 + "var vs=document.querySelectorAll('video'),v=null,b=0;"
                 + "for(var i=0;i<vs.length;i++){var r=vs[i].getBoundingClientRect(),s=r.width*r.height;if(s>=b){b=s;v=vs[i];}}"
@@ -585,25 +623,29 @@ public class MainActivity extends Activity {
                 + "var vr=v.getBoundingClientRect(),c=v,p=v.parentElement;"
                 + "while(p&&p!==document.body){var pr=p.getBoundingClientRect();"
                 + "if(pr.width>vr.width*1.15+4||pr.height>vr.height*1.35+4)break;c=p;p=p.parentElement;}"
-                + "c.setAttribute('data-derstv-full','1');"
-                + "var a=c.parentElement;while(a){a.setAttribute('data-derstv-anc','1');a=a.parentElement;}"
+                + "c.setAttribute('data-derstv-full','1');v.setAttribute('data-derstv-vid','1');"
+                + "var a=v.parentElement;while(a){a.setAttribute('data-derstv-anc','1');a=a.parentElement;}"
                 + "var st=document.createElement('style');st.id=id;"
                 + "st.textContent='html,body{overflow:hidden!important;background:#000!important}'"
                 + "+'body *{visibility:hidden!important}'"
                 + "+'[data-derstv-full],[data-derstv-full] *{visibility:visible!important}'"
                 + "+'[data-derstv-anc]{transform:none!important;filter:none!important;contain:none!important;will-change:auto!important;overflow:visible!important}'"
                 + "+'[data-derstv-full]{position:fixed!important;left:0!important;top:0!important;right:0!important;bottom:0!important;"
-                + "width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;"
+                + "width:auto!important;height:auto!important;max-width:none!important;max-height:none!important;"
                 + "margin:0!important;z-index:2147483647!important;background:#000!important;transform:none!important}'"
-                + "+'[data-derstv-full] video{width:100%!important;height:100%!important;max-height:none!important;object-fit:contain!important}';"
+                + "+'[data-derstv-vid]{position:fixed!important;left:0!important;top:0!important;right:0!important;bottom:0!important;"
+                + "width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;min-width:0!important;min-height:0!important;"
+                + "margin:0!important;padding:0!important;background:#000!important;object-fit:var(--dtv-fit,contain)!important;"
+                + "transform:scale(var(--dtv-scale,1))!important;transform-origin:50% 50%!important}';"
                 + "(document.head||document.documentElement).appendChild(st);return 'on';})(" + on + ")";
         web.evaluateJavascript(js, new ValueCallback<String>() {
             @Override public void onReceiveValue(String v) {
                 String r = v == null ? "" : v.replace("\"", "");
                 if (on) {
                     cssFull = "on".equals(r);
+                    if (cssFull) applyVideoZoom();
                     // Video henüz yoksa bekçi kod yüklenince tam ekranı uygular.
-                    if (cssFull && !silent) showHint("Tam ekran  •  ▼ veya Geri: çık", 1800);
+                    if (cssFull && !silent) showHint("Tam ekran  •  ▲: sığdır / doldur / yakınlaştır  •  ▼ veya Geri: çık", 2500);
                 } else {
                     cssFull = false;
                 }
@@ -679,6 +721,14 @@ public class MainActivity extends Activity {
         return "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/"
                 + chrome + " Safari/537.36";
     }
+
+    private final Runnable relayout = new Runnable() {
+        @Override public void run() {
+            web.requestLayout();
+            applyViewport();
+            if (wantFull && videoMode) applyCssFullscreen(true, true);
+        }
+    };
 
     private final Runnable hideHint = new Runnable() {
         @Override public void run() { hint.setVisibility(View.GONE); }

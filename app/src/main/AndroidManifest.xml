@@ -12,7 +12,7 @@
         android:banner="@drawable/banner"
         android:hardwareAccelerated="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="Ders TV"
+        android:label="Udemy TV"
         android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen">
 
         <activity

@@ -33,12 +33,12 @@ jobs:
       - name: APK'yi yukle
         uses: actions/upload-artifact@v4
         with:
-          name: UdemyTV-apk
+          name: UdemyFans-apk
           path: app/build/outputs/apk/release/*.apk
 
       - name: APK'yi Releases sayfasinda yayinla
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/release/app-release.apk UdemyTV.apk
-          gh release create "v${{ github.run_number }}" UdemyTV.apk --title "Udemy TV (derleme ${{ github.run_number }})" --notes "Otomatik derleme. UdemyTV.apk dosyasini indirip TV'ye kurun." --latest
+          cp app/build/outputs/apk/release/app-release.apk UdemyFans.apk
+          gh release create "v${{ github.run_number }}" UdemyFans.apk --title "Udemy Fans (derleme ${{ github.run_number }})" --notes "Otomatik derleme. UdemyFans.apk dosyasini indirip TV'ye kurun." --latest

@@ -131,6 +131,7 @@ public class MainActivity extends Activity {
         });
 
         handler.postDelayed(viewportGuard, 3000);
+        handler.postDelayed(errorGuard, 4000);
 
         if (savedInstanceState != null) {
             web.restoreState(savedInstanceState);
@@ -536,6 +537,86 @@ public class MainActivity extends Activity {
             handler.postDelayed(this, 1500);
         }
     };
+
+    // ------------------------------------------------------------------ playback error recovery
+
+    /** Son bilinen oynatma konumu (sn) ve ait olduğu ders adresi */
+    private double lastPos = 0;
+    private String lastPosUrl = null;
+    /** Yeniden yüklemeden sonra gidilecek konum */
+    private double resumeAt = -1;
+    private String resumeUrl = null;
+    private int errorRecoveries = 0;
+    private String errorUrl = null;
+    private long lastRecovery = 0;
+
+    private static String lectureKey(String url) {
+        if (url == null) return "";
+        int q = url.indexOf('?'); if (q >= 0) url = url.substring(0, q);
+        int h = url.indexOf('#'); if (h >= 0) url = url.substring(0, h);
+        return url;
+    }
+
+    /**
+     * Udemy oynatıcısı "Video hatası / beklenmedik bir hata oluştu" penceresi gösterirse
+     * dersi kendiliğinden yeniden yükler ve videoyu kaldığı saniyeden sürdürür.
+     */
+    private final Runnable errorGuard = new Runnable() {
+        @Override public void run() {
+            handler.postDelayed(this, 2000);
+            if (!videoMode || web == null) return;
+            final String key = lectureKey(web.getUrl());
+            String seek = (resumeAt > 0 && key.equals(resumeUrl)) ? String.valueOf(resumeAt) : "-1";
+            String js = "(function(){var R=" + seek + ";"
+                    + "var err=false,re=/(video hatas|video error|oynatmay. birka|unexpected error|beklenmedik bir hata)/i;"
+                    + "var ds=document.querySelectorAll('[role=dialog],[role=alertdialog],[class*=modal],[class*=error],[class*=alert]');"
+                    + "for(var i=0;i<ds.length&&!err;i++){var d=ds[i];if(d.offsetParent===null&&getComputedStyle(d).position!=='fixed')continue;"
+                    + "var t=(d.textContent||'');if(t.length<600&&re.test(t))err=true;}"
+                    + "var vs=document.querySelectorAll('video'),v=null,b=0;"
+                    + "for(var j=0;j<vs.length;j++){var r=vs[j].getBoundingClientRect(),s=r.width*r.height;if(s>=b){b=s;v=vs[j];}}"
+                    + "if(err)return 'err';if(!v)return 'none';"
+                    + "if(R>0){if(v.readyState>=1&&isFinite(v.duration)&&v.duration>0){"
+                    + "if(Math.abs(v.currentTime-R)>4)v.currentTime=Math.min(R,v.duration-1);"
+                    + "var p=v.play();if(p&&p.catch)p.catch(function(){});return 'resumed';}return 'wait';}"
+                    + "return 't:'+v.currentTime;})()";
+            web.evaluateJavascript(js, new ValueCallback<String>() {
+                @Override public void onReceiveValue(String v) {
+                    if (v == null || !videoMode) return;
+                    v = v.replace("\"", "");
+                    if (v.startsWith("t:")) {
+                        try {
+                            double t = Double.parseDouble(v.substring(2));
+                            if (t > 1) { lastPos = t; lastPosUrl = key; }
+                        } catch (NumberFormatException ignored) { }
+                    } else if (v.equals("resumed")) {
+                        resumeAt = -1; resumeUrl = null;
+                        showHint("Video kaldığı yerden devam ediyor", 2500);
+                    } else if (v.equals("err")) {
+                        recoverFromVideoError(key);
+                    }
+                }
+            });
+        }
+    };
+
+    private void recoverFromVideoError(String key) {
+        long now = System.currentTimeMillis();
+        if (now - lastRecovery < 15000) return;       // yeniden yükleme sürerken tekrar tetikleme
+        if (!key.equals(errorUrl)) { errorUrl = key; errorRecoveries = 0; }
+        if (errorRecoveries >= 3) {
+            if (errorRecoveries == 3) {
+                errorRecoveries++;
+                showHint("Video oynatılamıyor. Sonraki derse geçin veya uygulamayı kapatıp yeniden açın.", 8000);
+            }
+            return;
+        }
+        errorRecoveries++;
+        lastRecovery = now;
+        resumeAt = key.equals(lastPosUrl) ? lastPos : -1;
+        resumeUrl = key;
+        showHint("Video hatası alındı, ders yeniden yükleniyor… (" + errorRecoveries + "/3)", 4000);
+        web.reload();
+    }
 
     // ------------------------------------------------------------------ quality
 

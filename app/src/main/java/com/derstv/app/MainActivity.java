@@ -441,11 +441,13 @@ public class MainActivity extends Activity {
         boolean lecture = url != null && url.contains("/learn/lecture/");
         if (lecture != videoMode) {
             setVideoMode(lecture, true);
-        } else if (lecture && cssFull) {
-            // Udemy sonraki derse geçince oynatıcıyı yeniden kurar; tam ekranı tekrar uygula.
+        } else if (lecture) {
+            // Udemy sonraki derse geçince oynatıcıyı yeniden kurar; tam ekranı ve kaliteyi tekrar uygula.
             handler.postDelayed(new Runnable() {
                 @Override public void run() { if (cssFull) applyCssFullscreen(true); }
             }, 1500);
+            handler.removeCallbacks(highQuality);
+            handler.postDelayed(highQuality, 3500);
         }
     }
 
@@ -476,8 +478,46 @@ public class MainActivity extends Activity {
     private final Runnable autoFullscreen = new Runnable() {
         @Override public void run() {
             if (videoMode && !isFullscreen()) enterFullscreen();
+            handler.postDelayed(highQuality, 1200);
         }
     };
+
+    // ------------------------------------------------------------------ quality
+
+    private final Runnable highQuality = new Runnable() {
+        @Override public void run() { if (videoMode) forceHighestQuality(); }
+    };
+
+    /** Udemy oynatıcısının ayarlar menüsünden en yüksek çözünürlüğü (ör. 1080p) seçer. */
+    private void forceHighestQuality() {
+        String js = "(function(){"
+                + "function items(){var a=document.querySelectorAll('[role=menuitemradio],[role=menuitem],[role=menuitemcheckbox],[role=option],li,button'),o=[];"
+                + "for(var i=0;i<a.length;i++){var t=(a[i].textContent||'').trim();if(/^\\d{3,4}p\\b/i.test(t)&&t.length<12)o.push(a[i]);}return o;}"
+                + "function pick(){var its=items();if(!its.length)return 0;var best=null,bv=0;"
+                + "for(var i=0;i<its.length;i++){var v=parseInt(its[i].textContent,10);if(v>bv){bv=v;best=its[i];}}"
+                + "var sel=best.getAttribute('aria-checked')==='true'||best.getAttribute('aria-selected')==='true';"
+                + "if(!sel)best.click();window.__dtvQ=bv;return bv;}"
+                + "function btn(){var b=document.querySelectorAll('button');for(var i=0;i<b.length;i++){"
+                + "var s=(b[i].getAttribute('aria-label')||'')+' '+(b[i].getAttribute('data-purpose')||'')+' '+(b[i].getAttribute('title')||'');"
+                + "if(/(settings|ayarlar|quality|kalite)/i.test(s))return b[i];}return null;}"
+                + "window.__dtvQ=0;if(pick())return 'direct';"
+                + "var s=btn();if(!s)return 'nobutton';s.click();"
+                + "setTimeout(function(){if(!pick()){var a=document.querySelectorAll('[role=menuitem],button,li');"
+                + "for(var i=0;i<a.length;i++){if(/(quality|kalite|çözünürlük)/i.test(a[i].textContent||'')&&(a[i].textContent||'').length<40){a[i].click();break;}}"
+                + "setTimeout(function(){pick();s.click();},350);}else{setTimeout(function(){s.click();},250);}},450);"
+                + "return 'menu';})()";
+        web.evaluateJavascript(js, null);
+        handler.postDelayed(new Runnable() {
+            @Override public void run() {
+                web.evaluateJavascript("String(window.__dtvQ||0)", new ValueCallback<String>() {
+                    @Override public void onReceiveValue(String v) {
+                        String q = v == null ? "0" : v.replace("\"", "");
+                        if (!"0".equals(q)) showHint("Görüntü kalitesi: " + q + "p", 2000);
+                    }
+                });
+            }
+        }, 1600);
+    }
 
     private boolean isFullscreen() {
         return customView != null || cssFull;

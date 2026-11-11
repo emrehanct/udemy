@@ -324,7 +324,9 @@ public class MainActivity extends Activity {
             if (videoMode) {
                 if (code == KeyEvent.KEYCODE_DPAD_LEFT) videoCommand(String.valueOf(-SEEK_SEC));
                 else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) videoCommand(String.valueOf(SEEK_SEC));
-                else setVideoMode(false, true);
+                else if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
+                    if (e.getRepeatCount() == 0) toggleFullscreen();
+                } else setVideoMode(false, true);
                 return true;
             }
             moveCursor(code, e.getRepeatCount());
@@ -347,14 +349,8 @@ public class MainActivity extends Activity {
     }
 
     private void onBackKey() {
-        if (customView != null) {
-            // Tam ekrandan çık
-            web.evaluateJavascript("document.exitFullscreen&&document.exitFullscreen()", null);
-            handler.postDelayed(new Runnable() {
-                @Override public void run() {
-                    if (customView != null && customCallback != null) customCallback.onCustomViewHidden();
-                }
-            }, 300);
+        if (isFullscreen()) {
+            exitFullscreen();
             return;
         }
         if (videoMode) {
@@ -443,19 +439,121 @@ public class MainActivity extends Activity {
 
     private void updateModeForUrl(String url) {
         boolean lecture = url != null && url.contains("/learn/lecture/");
-        if (lecture != videoMode) setVideoMode(lecture, true);
+        if (lecture != videoMode) {
+            setVideoMode(lecture, true);
+        } else if (lecture && cssFull) {
+            // Udemy sonraki derse geçince oynatıcıyı yeniden kurar; tam ekranı tekrar uygula.
+            handler.postDelayed(new Runnable() {
+                @Override public void run() { if (cssFull) applyCssFullscreen(true); }
+            }, 1500);
+        }
     }
 
     private void setVideoMode(boolean on, boolean announce) {
         videoMode = on;
         cursor.setVisibility(on ? View.INVISIBLE : View.VISIBLE);
+        if (on) {
+            // Ders açılınca videonun yüklenmesini bekleyip otomatik tam ekrana geç.
+            handler.removeCallbacks(autoFullscreen);
+            handler.postDelayed(autoFullscreen, 2500);
+        } else {
+            handler.removeCallbacks(autoFullscreen);
+            if (isFullscreen()) exitFullscreen();
+        }
         if (announce) {
             if (on) {
-                showHint("Video modu  •  OK: oynat/durdur  •  ◀ ▶: 10 sn  •  ▲▼: imleç", 3500);
+                showHint("Video modu  •  OK: oynat/durdur  •  ◀ ▶: 10 sn  •  ▼: tam ekran  •  ▲: imleç", 4000);
             } else {
                 showHint("İmleç modu  •  Uzun OK: video modu", 2000);
             }
         }
+    }
+
+    // ------------------------------------------------------------------ fullscreen
+
+    private boolean cssFull = false;
+
+    private final Runnable autoFullscreen = new Runnable() {
+        @Override public void run() {
+            if (videoMode && !isFullscreen()) enterFullscreen();
+        }
+    };
+
+    private boolean isFullscreen() {
+        return customView != null || cssFull;
+    }
+
+    private void toggleFullscreen() {
+        if (isFullscreen()) exitFullscreen(); else enterFullscreen();
+    }
+
+    /** Önce Udemy oynatıcısının kendi tam ekranını ("F" kısayolu) dener; olmazsa videoyu ekrana yayar. */
+    private void enterFullscreen() {
+        web.requestFocus();
+        long t = SystemClock.uptimeMillis();
+        web.dispatchKeyEvent(new KeyEvent(t, t, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_F, 0));
+        web.dispatchKeyEvent(new KeyEvent(t, t + 50, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_F, 0));
+        handler.postDelayed(new Runnable() {
+            @Override public void run() {
+                if (customView != null || !videoMode) return;
+                web.evaluateJavascript("!!(document.fullscreenElement||document.webkitFullscreenElement)",
+                        new ValueCallback<String>() {
+                            @Override public void onReceiveValue(String v) {
+                                if (customView == null && !"true".equals(v)) applyCssFullscreen(true);
+                            }
+                        });
+            }
+        }, 800);
+    }
+
+    private void exitFullscreen() {
+        if (customView != null) {
+            web.evaluateJavascript("document.exitFullscreen&&document.exitFullscreen()", null);
+            handler.postDelayed(new Runnable() {
+                @Override public void run() {
+                    if (customView != null && customCallback != null) customCallback.onCustomViewHidden();
+                }
+            }, 300);
+        }
+        if (cssFull) applyCssFullscreen(false);
+    }
+
+    /** Oynatıcı kutusunu (video + altyazı + kontroller) sabit konumla tüm ekrana yayar. */
+    private void applyCssFullscreen(final boolean on) {
+        String js = "(function(on){var id='derstv-full',o=document.getElementById(id);if(o)o.remove();"
+                + "var ms=document.querySelectorAll('[data-derstv-full],[data-derstv-anc]');"
+                + "for(var k=0;k<ms.length;k++){ms[k].removeAttribute('data-derstv-full');ms[k].removeAttribute('data-derstv-anc');}"
+                + "if(!on)return 'off';"
+                + "var vs=document.querySelectorAll('video'),v=null,b=0;"
+                + "for(var i=0;i<vs.length;i++){var r=vs[i].getBoundingClientRect(),s=r.width*r.height;if(s>=b){b=s;v=vs[i];}}"
+                + "if(!v||b<1)return 'none';"
+                + "var vr=v.getBoundingClientRect(),c=v,p=v.parentElement;"
+                + "while(p&&p!==document.body){var pr=p.getBoundingClientRect();"
+                + "if(pr.width>vr.width*1.15+4||pr.height>vr.height*1.35+4)break;c=p;p=p.parentElement;}"
+                + "c.setAttribute('data-derstv-full','1');"
+                + "var a=c.parentElement;while(a){a.setAttribute('data-derstv-anc','1');a=a.parentElement;}"
+                + "var st=document.createElement('style');st.id=id;"
+                + "st.textContent='html,body{overflow:hidden!important;background:#000!important}'"
+                + "+'body *{visibility:hidden!important}'"
+                + "+'[data-derstv-full],[data-derstv-full] *{visibility:visible!important}'"
+                + "+'[data-derstv-anc]{transform:none!important;filter:none!important;contain:none!important;will-change:auto!important;overflow:visible!important}'"
+                + "+'[data-derstv-full]{position:fixed!important;left:0!important;top:0!important;right:0!important;bottom:0!important;"
+                + "width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;"
+                + "margin:0!important;z-index:2147483647!important;background:#000!important;transform:none!important}'"
+                + "+'[data-derstv-full] video{width:100%!important;height:100%!important;max-height:none!important;object-fit:contain!important}';"
+                + "(document.head||document.documentElement).appendChild(st);return 'on';})(" + on + ")";
+        web.evaluateJavascript(js, new ValueCallback<String>() {
+            @Override public void onReceiveValue(String v) {
+                String r = v == null ? "" : v.replace("\"", "");
+                if (on) {
+                    cssFull = "on".equals(r);
+                    if (!cssFull) showHint("Video henüz yüklenmedi, biraz sonra ▼ ile tekrar deneyin", 2500);
+                    else showHint("Tam ekran  •  ▼ veya Geri: çık", 1800);
+                } else {
+                    cssFull = false;
+                }
+            }
+        });
     }
 
     /** a = "toggle" | "play" | "pause" | saniye (ör. "10", "-10") */

@@ -442,12 +442,10 @@ public class MainActivity extends Activity {
         if (lecture != videoMode) {
             setVideoMode(lecture, true);
         } else if (lecture) {
-            // Udemy sonraki derse geçince oynatıcıyı yeniden kurar; tam ekranı ve kaliteyi tekrar uygula.
-            handler.postDelayed(new Runnable() {
-                @Override public void run() { if (cssFull) applyCssFullscreen(true); }
-            }, 1500);
+            // Udemy sonraki derse geçince oynatıcıyı yeniden kurar; kaliteyi tekrar seç
+            // (tam ekranı bekçi kod kendisi geri getirir).
             handler.removeCallbacks(highQuality);
-            handler.postDelayed(highQuality, 3500);
+            handler.postDelayed(highQuality, 3000);
         }
     }
 
@@ -455,10 +453,13 @@ public class MainActivity extends Activity {
         videoMode = on;
         cursor.setVisibility(on ? View.INVISIBLE : View.VISIBLE);
         if (on) {
-            // Ders açılınca videonun yüklenmesini bekleyip otomatik tam ekrana geç.
+            // Ders açılınca önce en yüksek kaliteyi seç, ardından tam ekrana geç.
+            handler.removeCallbacks(highQuality);
             handler.removeCallbacks(autoFullscreen);
-            handler.postDelayed(autoFullscreen, 2500);
+            handler.postDelayed(highQuality, 2000);
+            handler.postDelayed(autoFullscreen, 4000);
         } else {
+            handler.removeCallbacks(highQuality);
             handler.removeCallbacks(autoFullscreen);
             if (isFullscreen()) exitFullscreen();
         }
@@ -474,11 +475,34 @@ public class MainActivity extends Activity {
     // ------------------------------------------------------------------ fullscreen
 
     private boolean cssFull = false;
+    /** Kullanıcı tam ekran istiyor mu? (▼ veya Geri ile kapatılana kadar true) */
+    private boolean wantFull = false;
 
     private final Runnable autoFullscreen = new Runnable() {
         @Override public void run() {
             if (videoMode && !isFullscreen()) enterFullscreen();
-            handler.postDelayed(highQuality, 1200);
+        }
+    };
+
+    /** Udemy oynatıcıyı yeniden kurarsa (kalite değişimi, sonraki ders) tam ekranı geri getirir. */
+    private final Runnable fullWatchdog = new Runnable() {
+        @Override public void run() {
+            if (!wantFull || !videoMode) return;
+            if (customView == null) {
+                String js = "(function(){var c=document.querySelector('[data-derstv-full]');"
+                        + "if(!c||!document.getElementById('derstv-full'))return 'lost';"
+                        + "var vs=document.querySelectorAll('video'),v=null,b=0;"
+                        + "for(var i=0;i<vs.length;i++){var r=vs[i].getBoundingClientRect(),s=r.width*r.height;if(s>=b){b=s;v=vs[i];}}"
+                        + "if(v&&!c.contains(v))return 'lost';return 'ok';})()";
+                web.evaluateJavascript(js, new ValueCallback<String>() {
+                    @Override public void onReceiveValue(String v) {
+                        if (wantFull && videoMode && customView == null && v != null && v.contains("lost")) {
+                            applyCssFullscreen(true, true);
+                        }
+                    }
+                });
+            }
+            handler.postDelayed(this, 1500);
         }
     };
 
@@ -520,33 +544,24 @@ public class MainActivity extends Activity {
     }
 
     private boolean isFullscreen() {
-        return customView != null || cssFull;
+        return customView != null || wantFull;
     }
 
     private void toggleFullscreen() {
         if (isFullscreen()) exitFullscreen(); else enterFullscreen();
     }
 
-    /** Önce Udemy oynatıcısının kendi tam ekranını ("F" kısayolu) dener; olmazsa videoyu ekrana yayar. */
+    /** Videoyu (oynatıcı kutusuyla birlikte) tüm ekrana yayar ve bekçiyi başlatır. */
     private void enterFullscreen() {
-        web.requestFocus();
-        long t = SystemClock.uptimeMillis();
-        web.dispatchKeyEvent(new KeyEvent(t, t, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_F, 0));
-        web.dispatchKeyEvent(new KeyEvent(t, t + 50, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_F, 0));
-        handler.postDelayed(new Runnable() {
-            @Override public void run() {
-                if (customView != null || !videoMode) return;
-                web.evaluateJavascript("!!(document.fullscreenElement||document.webkitFullscreenElement)",
-                        new ValueCallback<String>() {
-                            @Override public void onReceiveValue(String v) {
-                                if (customView == null && !"true".equals(v)) applyCssFullscreen(true);
-                            }
-                        });
-            }
-        }, 800);
+        wantFull = true;
+        applyCssFullscreen(true, false);
+        handler.removeCallbacks(fullWatchdog);
+        handler.postDelayed(fullWatchdog, 1500);
     }
 
     private void exitFullscreen() {
+        wantFull = false;
+        handler.removeCallbacks(fullWatchdog);
         if (customView != null) {
             web.evaluateJavascript("document.exitFullscreen&&document.exitFullscreen()", null);
             handler.postDelayed(new Runnable() {
@@ -555,11 +570,11 @@ public class MainActivity extends Activity {
                 }
             }, 300);
         }
-        if (cssFull) applyCssFullscreen(false);
+        applyCssFullscreen(false, true);
     }
 
     /** Oynatıcı kutusunu (video + altyazı + kontroller) sabit konumla tüm ekrana yayar. */
-    private void applyCssFullscreen(final boolean on) {
+    private void applyCssFullscreen(final boolean on, final boolean silent) {
         String js = "(function(on){var id='derstv-full',o=document.getElementById(id);if(o)o.remove();"
                 + "var ms=document.querySelectorAll('[data-derstv-full],[data-derstv-anc]');"
                 + "for(var k=0;k<ms.length;k++){ms[k].removeAttribute('data-derstv-full');ms[k].removeAttribute('data-derstv-anc');}"
@@ -587,8 +602,8 @@ public class MainActivity extends Activity {
                 String r = v == null ? "" : v.replace("\"", "");
                 if (on) {
                     cssFull = "on".equals(r);
-                    if (!cssFull) showHint("Video henüz yüklenmedi, biraz sonra ▼ ile tekrar deneyin", 2500);
-                    else showHint("Tam ekran  •  ▼ veya Geri: çık", 1800);
+                    // Video henüz yoksa bekçi kod yüklenince tam ekranı uygular.
+                    if (cssFull && !silent) showHint("Tam ekran  •  ▼ veya Geri: çık", 1800);
                 } else {
                     cssFull = false;
                 }

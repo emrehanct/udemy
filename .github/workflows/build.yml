@@ -1,0 +1,35 @@
+name: APK derle
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Simge, afis ve imza anahtarini hazirla
+        run: |
+          pip install --quiet pillow
+          python3 tools/make_icons.py
+          echo 'MIID8AIBAzCCA5oGCSqGSIb3DQEHAaCCA4sEggOHMIIDgzCCASoGCSqGSIb3DQEHAaCCARsEggEXMIIBEzCCAQ8GCyqGSIb3DQEMCgECoIG9MIG6MGYGCSqGSIb3DQEFDTBZMDgGCSqGSIb3DQEFDDArBBQCUe/D0eECImoiyUpXi6FYbvIXMgICJxACASAwDAYIKoZIhvcNAgkFADAdBglghkgBZQMEASoEEINUZLB1ScpyyPY1qVJCC0UEUBgWpL/dNrjNt1uAaPJYdXu/LYWOHeiXUmii1w+o2MPZVJ1gtFOxSGnJLWHgzOQc/a6elpKP/AlWqQShAnJcYuTuhbk2Wp6qJehFcnfhUZYAMUAwGwYJKoZIhvcNAQkUMQ4eDABkAGUAcgBzAHQAdjAhBgkqhkiG9w0BCRUxFAQSVGltZSAxNzk0NDIwNzQ1NzA5MIICUQYJKoZIhvcNAQcGoIICQjCCAj4CAQAwggI3BgkqhkiG9w0BBwEwZgYJKoZIhvcNAQUNMFkwOAYJKoZIhvcNAQUMMCsEFLLtIa2RZF3T2UhWFWoigWT9Q+4TAgInEAIBIDAMBggqhkiG9w0CCQUAMB0GCWCGSAFlAwQBKgQQ5/1q+FMLWYsb/GMSaYSlQoCCAcABz2AOlwmIGNzjjrSeBBFy+0/O4iJIjQJZTBUzi2JvcWwe1MiLZ12LceFTozVx1b6fIfXq3fWCsgepF7XGGEoPPboM0xS0AmCTn3tNdwjrm2nE04Z0dJHcdRHqmUEgpPH2GERrVTCFU5ggNhdseKJAldKQZ0dBuAylZXzx7LuwcB8v0TvDXO77bsJ8nGY7iKOA3QMC0fFgllZiyBYnLaT+VuJZ8faylXX+SjR1uUbTcdg4y8YWtdpFWQG4GQVqj4+2xFHkZim/buirWvYB3vqhui+ZptqZXbYR7NJNY3VxW97uIMGgTLXgZtXKGZKDtj2aFdHKShyD3VJTxHEv/tRY0UD0vSkGiQSljbfUziBtmaedA7momTujR3GgMH0FxXD0xyYjda+Cs5LkYrL2U01dcwdLQTYfocyi51vHC9TDQW9X+LH7cGLuYWcDIgZ5wDiq9R2NrQfgGgqhlUujEfHRlRCVPcoTSsf0y0m8a4N1mAO4r7DqtCSG359QZ2JihtGbd+EzeGVG2MKWnDny88Q5MHjo4mpwSRr+kfLlMLHemUdNUSzK3sC3ztirWtRK4KjXcN2DLs9Op2khcZOFVg3HME0wMTANBglghkgBZQMEAgEFAAQg5y6NkxSf7wYGYROdd3uogf/2TdpP07gAzwHos4Cz4UoEFCbixkPHRFj+UeKMd+UzpWMdXQanAgInEA==' | base64 -d > app/derstv.keystore
+
+      - name: APK olustur
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: APK'yi yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: DersTV-apk
+          path: app/build/outputs/apk/release/*.apk

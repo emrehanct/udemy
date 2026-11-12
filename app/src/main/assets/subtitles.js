@@ -1,9 +1,11 @@
-// Udemy Fans — Türkçe altyazı katmanı.
-// Dersin altyazısını (Türkçe varsa onu, yoksa İngilizceyi) alır, gerekirse uygulama
-// üzerinden Türkçeye çevirir ve videonun üstünde büyük yazıyla gösterir.
+// EduCast TV — subtitle overlay / altyazı katmanı.
+// Takes the lecture's captions in the TV's language if available; otherwise translates the
+// English (or any) captions through the app and shows them in large type over the video.
+// Dersin altyazısını TV'nin dilinde alır; yoksa İngilizce (veya mevcut) altyazıyı uygulama
+// üzerinden çevirir ve videonun üstünde büyük yazıyla gösterir.
 (function () {
   if (window.__dtvSub) { window.__dtvSub.kick(); return; }
-  var S = window.__dtvSub = { on: true };
+  var S = window.__dtvSub = { on: true, lang: 'tr' };
   var cbs = {}, seq = 0, cur = null, box = null, span = null, lastText = null;
 
   window.__dtvSubCb = function (id, ok, data) {
@@ -87,13 +89,13 @@
       return (j && j.asset && j.asset.captions) || [];
     });
   }
-  function pick(caps) {
+  function pick(caps, lang) {
     var tr = null, en = null, enAuto = null, any = null;
     caps.forEach(function (c) {
       if (!c || !c.url || (c.status !== undefined && c.status !== 1)) return;
       var loc = String(c.locale_id || (c.locale && c.locale.locale) || '').toLowerCase();
       any = any || c;
-      if (loc.indexOf('tr') === 0) tr = c;
+      if (loc.indexOf(lang) === 0) tr = tr || c;
       else if (loc.indexOf('en') === 0) {
         if (c.source === 'auto') enAuto = enAuto || c; else en = en || c;
       }
@@ -192,7 +194,7 @@
 
   function load(info) {
     var st = cur = { id: info.id, groups: null, tr: [], dead: false };
-    var key = 'dtvsub1:' + info.id;
+    var key = 'dtvsub2:' + S.lang + ':' + info.id;
     function save() {
       try { localStorage.setItem(key, JSON.stringify({ g: st.groups, t: st.tr })); } catch (e) {}
     }
@@ -203,7 +205,7 @@
     courseId(info.slug).then(function (cid) {
       return captionsFor(cid, info.id);
     }).then(function (caps) {
-      var p = pick(caps);
+      var p = pick(caps, S.lang);
       if (!p) throw new Error('nocap');
       return fetchVtt(p.c.url).then(function (txt) {
         if (st !== cur) return;
@@ -217,17 +219,17 @@
         }
         st.groups = group(cues);
         st.tr = new Array(st.groups.length);
-        status('Türkçe altyazı hazırlanıyor…');
+        status('preparing');
         return translateAll(st).then(function () {
           if (st !== cur) return;
           save();
-          status('Türkçe altyazı hazır');
+          status('ready');
         });
       });
     }).catch(function (e) {
       if (st !== cur) return;
       st.dead = true;
-      status(e && e.message === 'nocap' ? 'Bu derste altyazı yok' : 'Türkçe altyazı alınamadı');
+      status(e && e.message === 'nocap' ? 'nocap' : 'fail');
     });
   }
 
@@ -253,6 +255,7 @@
     show(txt);
   }
   S.setOn = function (on) { S.on = !!on; lastText = null; tick(); };
+  S.setLang = function (l) { if (l && l !== S.lang) { S.lang = l; cur = null; } };
   S.kick = function () { lastText = null; tick(); };
   setInterval(tick, 200);
   tick();

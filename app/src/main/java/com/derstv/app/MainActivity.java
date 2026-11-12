@@ -669,7 +669,11 @@ public class MainActivity extends Activity {
     private String subScript = null;
     private final ExecutorService subExec = Executors.newSingleThreadExecutor();
 
-    private boolean subOn() { return prefs.getBoolean("subOn", true); }
+    /** Altyazı modu: "auto" (yalnızca yabancı dilli derslerde), "off" (hiç), "on" (her zaman). */
+    private String subMode() {
+        String m = prefs.getString("subMode", "auto");
+        return "off".equals(m) || "on".equals(m) ? m : "auto";
+    }
 
     /** Altyazı hedef dili = TV'nin dili (Türkçe değilse İngilizce). */
     private static String subLang() {
@@ -686,15 +690,18 @@ public class MainActivity extends Activity {
             } catch (Exception ex) { return; }
         }
         web.evaluateJavascript(subScript + "\n;window.__dtvSub&&window.__dtvSub.setLang('" + subLang() + "');"
-                + "window.__dtvSub&&window.__dtvSub.setOn(" + subOn() + ");", null);
+                + "window.__dtvSub&&window.__dtvSub.setMode('" + subMode() + "');", null);
     }
 
+    /** Uzun OK / Menü: Otomatik → Kapalı → Her zaman açık → Otomatik */
     private void toggleSubtitles() {
-        boolean on = !subOn();
-        prefs.edit().putBoolean("subOn", on).apply();
+        String cur = subMode();
+        String next = "auto".equals(cur) ? "off" : "off".equals(cur) ? "on" : "auto";
+        prefs.edit().putString("subMode", next).apply();
         injectSubtitles(web.getUrl());
-        web.evaluateJavascript("window.__dtvSub&&window.__dtvSub.setOn(" + on + ")", null);
-        showHint(getString(on ? R.string.subs_on : R.string.subs_off), 2000);
+        web.evaluateJavascript("window.__dtvSub&&window.__dtvSub.setMode('" + next + "')", null);
+        int id = "off".equals(next) ? R.string.subs_off : "on".equals(next) ? R.string.subs_on : R.string.subs_auto;
+        showHint(getString(id), 3500);
     }
 
     private static byte[] readAll(InputStream in) throws java.io.IOException {

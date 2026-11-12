@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="disclaimer">Bu resmi bir uygulama değildir. EduCast TV, kullanıcıların halihazırda sahip oldukları eğitim içeriklerini TV arayüzünde izlemelerini sağlayan bağımsız (unofficial) bir istemcidir (client).\n\nOturum ve izleme bilgileriniz yalnızca bu TV\'de kalır; geliştiriciye veya başka bir sunucuya gönderilmez.</string>
+
+    <string name="hint_welcome">Yön tuşları: imleç   •   OK: tıkla   •   Uzun OK: yazı boyutu / video modu   •   Geri: geri</string>
+    <string name="hint_video_mode">Video modu  •  OK: oynat/durdur  •  ◀ ▶: 10 sn  •  ▼: tam ekran  •  ▲: imleç (tam ekranda: yakınlaştır)  •  Uzun OK: Türkçe altyazı</string>
+    <string name="hint_cursor_mode">İmleç modu  •  Uzun OK: video modu</string>
+    <string name="hint_fullscreen">Tam ekran  •  ▲: sığdır / doldur / yakınlaştır  •  ▼ veya Geri: çık</string>
+    <string name="err_page">Sayfa açılamadı. İnternet bağlantısını kontrol edip uygulamayı yeniden açın.</string>
+    <string name="exit_again">Çıkmak için Geri\'ye tekrar basın</string>
+    <string name="no_video">Bu sayfada video bulunamadı</string>
+
+    <string name="video_zoom">Görüntü: %1$s  •  ▲: değiştir</string>
+    <string-array name="zoom_names">
+        <item>Ekrana sığdır</item>
+        <item>Ekranı doldur</item>
+        <item>Yakınlaştır 1.2x</item>
+        <item>Yakınlaştır 1.4x</item>
+    </string-array>
+    <string name="text_size">Yazı boyutu: %1$s</string>
+    <string-array name="text_sizes">
+        <item>Büyük</item>
+        <item>Normal</item>
+        <item>Küçük</item>
+    </string-array>
+    <string name="video_quality">Görüntü kalitesi: %1$sp</string>
+    <string name="video_resumed">Video kaldığı yerden devam ediyor</string>
+    <string name="video_failed">Video oynatılamıyor. Sonraki derse geçin veya uygulamayı kapatıp yeniden açın.</string>
+    <string name="video_error_reload">Video hatası alındı, ders yeniden yükleniyor… (%1$d/3)</string>
+
+    <string name="subs_on">Türkçe altyazı: AÇIK</string>
+    <string name="subs_off">Türkçe altyazı: KAPALI</string>
+    <string name="sub_preparing">Türkçe altyazı hazırlanıyor…</string>
+    <string name="sub_ready">Türkçe altyazı hazır</string>
+    <string name="sub_none">Bu derste altyazı yok</string>
+    <string name="sub_failed">Türkçe altyazı alınamadı</string>
+
+    <string name="update_title">Güncelleme var</string>
+    <string name="update_message">%1$s kurulmaya hazır.</string>
+    <string name="update_now">Güncelle</string>
+    <string name="update_later">Sonra</string>
+    <string name="update_downloading">Güncelleme indiriliyor… %%%1$d</string>
+    <string name="update_installing">Güncelleme kuruluyor…</string>
+    <string name="update_failed">Güncelleme başarısız: %1$s</string>
+</resources>

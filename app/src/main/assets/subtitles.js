@@ -31,7 +31,7 @@
         '#dtv-sub{position:fixed!important;left:0;right:0;bottom:6vh;z-index:2147483647!important;' +
         'text-align:center;pointer-events:none;visibility:visible!important}' +
         '#dtv-sub span{display:inline-block;max-width:88vw;background:rgba(0,0,0,.75);color:#fff;' +
-        'font-family:sans-serif;font-weight:600;font-size:2.7vw;line-height:1.35;padding:.25em .7em;' +
+        'font-family:sans-serif;font-weight:600;font-size:calc(2.7vw * var(--dtv-subscale, 1));line-height:1.35;padding:.25em .7em;' +
         'border-radius:.3em;white-space:pre-line;visibility:visible!important}' +
         'html.dtv-sub-on [class*="captions-display--captions-container"],' +
         'html.dtv-sub-on [data-purpose="captions-cue-text"]{display:none!important}';
@@ -288,6 +288,11 @@
     S.mode = (m === 'on' || m === 'off') ? m : 'auto';
     lastText = null;
     tick();
+  };
+  // Yazı boyutu çarpanı / subtitle size multiplier (0.8 – 1.6)
+  S.setSize = function (k) {
+    var n = parseFloat(k);
+    if (n > 0) document.documentElement.style.setProperty('--dtv-subscale', String(n));
   };
   S.setLang = function (l) { if (l && l !== S.lang) { S.lang = l; cur = null; } };
   S.kick = function () { lastText = null; tick(); };

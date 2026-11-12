@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Google Play sürümü: uygulama kendini güncellemez (Play politikası), yalnız TV cihazlarında listelenir.
+     Google Play build: no self-update (Play policy); listed for Android TV devices only. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove" />
+
+    <uses-feature android:name="android.software.leanback" android:required="true" tools:replace="android:required" />
+</manifest>

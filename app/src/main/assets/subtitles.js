@@ -5,7 +5,9 @@
 // üzerinden çevirir ve videonun üstünde büyük yazıyla gösterir.
 (function () {
   if (window.__dtvSub) { window.__dtvSub.kick(); return; }
-  var S = window.__dtvSub = { on: true, lang: 'tr' };
+  // mode: 'auto' = yalnızca ders TV'nin dilinde değilse / only when the lecture is in another language
+  //       'on'   = her zaman / always,  'off' = hiç / never (Udemy's own captions are hidden too)
+  var S = window.__dtvSub = { mode: 'auto', lang: 'tr' };
   var cbs = {}, seq = 0, cur = null, box = null, span = null, lastText = null;
 
   window.__dtvSubCb = function (id, ok, data) {
@@ -18,7 +20,7 @@
       try { DTVSub[method](id, arg); } catch (e) { delete cbs[id]; rej(e); }
     });
   }
-  function status(m) { if (S.on) { try { DTVSub.status(m); } catch (e) {} } }
+  function status(m) { if (S.mode !== 'off') { try { DTVSub.status(m); } catch (e) {} } }
 
   // ---------------------------------------------------------------- görünüm
   function ui() {
@@ -82,6 +84,22 @@
     return getJSON('/api-2.0/courses/' + slug + '/?fields[course]=id').then(function (j) {
       courseIds[slug] = j.id; return j.id;
     });
+  }
+  // Dersin konuşma dili (kurs dili) / the course's spoken language, e.g. "tr_tr"
+  var courseLangs = {};
+  function courseLang(slug, cid) {
+    if (courseLangs[slug] !== undefined) return Promise.resolve(courseLangs[slug]);
+    try {
+      var c = localStorage.getItem('dtvloc:' + slug);
+      if (c !== null) { courseLangs[slug] = c; return Promise.resolve(c); }
+    } catch (e) {}
+    return getJSON('/api-2.0/courses/' + cid + '/?fields[course]=locale').then(function (j) {
+      var l = j && j.locale;
+      l = String((l && l.locale) || l || '').toLowerCase();
+      courseLangs[slug] = l;
+      try { localStorage.setItem('dtvloc:' + slug, l); } catch (e) {}
+      return l;
+    }, function () { return ''; });
   }
   function captionsFor(cid, lid) {
     return getJSON('/api-2.0/users/me/subscribed-courses/' + cid + '/lectures/' + lid +
@@ -193,37 +211,45 @@
   }
 
   function load(info) {
-    var st = cur = { id: info.id, groups: null, tr: [], dead: false };
+    var st = cur = { id: info.id, mode: S.mode, groups: null, tr: [], dead: false, same: false };
+    if (S.mode === 'off') return;
     var key = 'dtvsub2:' + S.lang + ':' + info.id;
     function save() {
       try { localStorage.setItem(key, JSON.stringify({ g: st.groups, t: st.tr })); } catch (e) {}
     }
-    try {
-      var c = JSON.parse(localStorage.getItem(key) || 'null');
-      if (c && c.g && c.t) { st.groups = c.g; st.tr = c.t; return; }
-    } catch (e) {}
     courseId(info.slug).then(function (cid) {
-      return captionsFor(cid, info.id);
-    }).then(function (caps) {
-      var p = pick(caps, S.lang);
-      if (!p) throw new Error('nocap');
-      return fetchVtt(p.c.url).then(function (txt) {
+      return courseLang(info.slug, cid).then(function (cl) {
         if (st !== cur) return;
-        var cues = parseVtt(txt);
-        if (!cues.length) throw new Error('nocap');
-        if (!p.translate) {
-          st.groups = cues;
-          st.tr = cues.map(function (q) { return q[2]; });
-          save();
-          return;
-        }
-        st.groups = group(cues);
-        st.tr = new Array(st.groups.length);
-        status('preparing');
-        return translateAll(st).then(function () {
-          if (st !== cur) return;
-          save();
-          status('ready');
+        st.same = !!cl && cl.indexOf(S.lang) === 0;
+        // Ders zaten TV'nin dilindeyse otomatik modda altyazı gösterme.
+        // Lecture already in the TV language: no subtitles in auto mode.
+        if (st.same && S.mode === 'auto') return;
+        try {
+          var c = JSON.parse(localStorage.getItem(key) || 'null');
+          if (c && c.g && c.t) { st.groups = c.g; st.tr = c.t; return; }
+        } catch (e) {}
+        return captionsFor(cid, info.id).then(function (caps) {
+          var p = pick(caps, S.lang);
+          if (!p) throw new Error('nocap');
+          return fetchVtt(p.c.url).then(function (txt) {
+            if (st !== cur) return;
+            var cues = parseVtt(txt);
+            if (!cues.length) throw new Error('nocap');
+            if (!p.translate) {
+              st.groups = cues;
+              st.tr = cues.map(function (q) { return q[2]; });
+              save();
+              return;
+            }
+            st.groups = group(cues);
+            st.tr = new Array(st.groups.length);
+            status('preparing');
+            return translateAll(st).then(function () {
+              if (st !== cur) return;
+              save();
+              status('ready');
+            });
+          });
         });
       });
     }).catch(function (e) {
@@ -244,17 +270,25 @@
   }
   function tick() {
     var info = lectureInfo();
-    if (!info) { show(''); return; }
-    if (S.on && (!cur || cur.id !== info.id)) { show(''); load(info); }
-    document.documentElement.classList.toggle('dtv-sub-on', !!(S.on && cur && !cur.dead && cur.id === info.id));
-    if (!S.on || !cur || cur.id !== info.id || !cur.groups) { show(''); return; }
+    if (!info) { show(''); document.documentElement.classList.remove('dtv-sub-on'); return; }
+    if (!cur || cur.id !== info.id || cur.mode !== S.mode) { show(''); load(info); }
+    var skip = S.mode === 'off' || (S.mode === 'auto' && cur.same);
+    var ours = !skip && !cur.dead && !!cur.groups;
+    // Udemy'nin kendi altyazısı: bizimki görünürken veya altyazı kapalıyken gizlenir.
+    // Udemy's own captions are hidden while ours are shown or when subtitles are off.
+    document.documentElement.classList.toggle('dtv-sub-on', skip || ours);
+    if (!ours) { show(''); return; }
     var v = video();
     if (!v) { show(''); return; }
     var t = v.currentTime, i = find(cur.groups, t), txt = '';
     if (i >= 0 && t <= cur.groups[i][1] + 0.4 && cur.tr[i]) txt = cur.tr[i];
     show(txt);
   }
-  S.setOn = function (on) { S.on = !!on; lastText = null; tick(); };
+  S.setMode = function (m) {
+    S.mode = (m === 'on' || m === 'off') ? m : 'auto';
+    lastText = null;
+    tick();
+  };
   S.setLang = function (l) { if (l && l !== S.lang) { S.lang = l; cur = null; } };
   S.kick = function () { lastText = null; tick(); };
   setInterval(tick, 200);

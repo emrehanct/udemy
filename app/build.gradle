@@ -36,12 +36,27 @@ android {
         release {
             minifyEnabled false
             if (releaseKeystore.exists()) signingConfig signingConfigs.release
+        }
+        debug {
+            // Deneme derlemelerinde otomatik güncelleme kapalı / disabled in debug builds
+            resValue 'string', 'update_repo', ''
+        }
+    }
+
+    // İki dağıtım: "github" (GitHub sürümleri + uygulama içi güncelleme) ve
+    // "play" (Google Play; güncellemeleri yalnız Play yapar, uygulama içi güncelleyici yok).
+    // Two distributions: "github" (GitHub releases + in-app updater) and
+    // "play" (Google Play; updates only through Play, no in-app updater).
+    flavorDimensions 'store'
+    productFlavors {
+        github {
+            dimension 'store'
             // Güncellemeler bu deponun GitHub sürümlerinden kontrol edilir (fork'lar kendi deposunu kullanır).
             // Updates are checked against this repository's GitHub releases (forks use their own).
             resValue 'string', 'update_repo', (System.getenv('GITHUB_REPOSITORY') ?: '')
         }
-        debug {
-            // Deneme derlemelerinde otomatik güncelleme kapalı / disabled in debug builds
+        play {
+            dimension 'store'
             resValue 'string', 'update_repo', ''
         }
     }

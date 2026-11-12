@@ -1,22 +1,26 @@
-# Uygulama simgesi ve TV afişini üretir (GitHub Actions derlemesinde çalışır).
-# tools/logo.b64 varsa (kullanıcının kendi logosu) simge ve afiş ondan üretilir.
-from PIL import Image, ImageDraw
+# Uygulama simgesini ve TV ana ekran afişini üretir (GitHub Actions derlemesinde çalışır).
+# Generates the launcher icon and the Android TV home-screen banner (runs in CI).
+#   tools/icon.b64   -> kare simge / square icon (JPEG, base64)
+#   tools/banner.b64 -> 16:9 afiş / banner (JPEG, base64)
+from PIL import Image
 import base64, io, os
 
 res = "app/src/main/res"
-for sub in ["drawable", "drawable-xhdpi", "mipmap-xhdpi", "mipmap-xxhdpi"]:
+
+
+def load(path):
+    return Image.open(io.BytesIO(base64.b64decode(open(path).read()))).convert("RGB")
+
+
+icon = load("tools/icon.b64")
+banner = load("tools/banner.b64")
+
+for sub, (w, h) in [("drawable", (320, 180)), ("drawable-xhdpi", (640, 360))]:
     os.makedirs(os.path.join(res, sub), exist_ok=True)
+    banner.resize((w, h), Image.LANCZOS).save(os.path.join(res, sub, "banner.png"))
 
-logo = Image.open(io.BytesIO(base64.b64decode(open("tools/logo.b64").read()))).convert("RGB")
+for sub, size in [("mipmap-mdpi", 48), ("mipmap-hdpi", 72), ("mipmap-xhdpi", 96), ("mipmap-xxhdpi", 144)]:
+    os.makedirs(os.path.join(res, sub), exist_ok=True)
+    icon.resize((size, size), Image.LANCZOS).save(os.path.join(res, sub, "ic_launcher.png"))
 
-# TV ana ekran afişi: siyah zemin, logo ortada
-for sub, (W, H) in [("drawable", (320, 180)), ("drawable-xhdpi", (640, 360))]:
-    bg = Image.new("RGB", (W, H), (0, 0, 0))
-    s = int(H * 0.96)
-    bg.paste(logo.resize((s, s), Image.LANCZOS), ((W - s) // 2, (H - s) // 2))
-    bg.save(os.path.join(res, sub, "banner.png"))
-
-# Uygulama simgesi
-for sub, sz in [("mipmap-xhdpi", 96), ("mipmap-xxhdpi", 144)]:
-    logo.resize((sz, sz), Image.LANCZOS).save(os.path.join(res, sub, "ic_launcher.png"))
-print("simgeler hazir")
+print("icons ready / simgeler hazir")

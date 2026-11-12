@@ -5,7 +5,7 @@
     <string name="disclaimer">This is not an official app. EduCast TV is an independent (unofficial) client that lets users watch the learning content they already own on a TV interface.\n\nYour sign-in and viewing data stay on this TV only. They are never sent to the developer or to any other server.</string>
 
     <string name="hint_welcome">Arrows: cursor   •   OK: click   •   Long OK: text size / video mode   •   Back: back</string>
-    <string name="hint_video_mode">Video mode  •  OK: play/pause  •  ◀ ▶: 10 s  •  ▼: full screen  •  ▲: cursor (full screen: zoom)  •  Long OK: subtitles</string>
+    <string name="hint_video_mode">Video mode  •  OK: menu  •  ◀ ▶: 10 s  •  ▼: full screen  •  ▲: cursor (full screen: zoom)  •  Long OK: subtitles</string>
     <string name="hint_cursor_mode">Cursor mode  •  Long OK: video mode</string>
     <string name="hint_fullscreen">Full screen  •  ▲: fit / fill / zoom  •  ▼ or Back: exit</string>
     <string name="err_page">The page could not be opened. Check your internet connection and reopen the app.</string>
@@ -45,4 +45,22 @@
     <string name="update_downloading">Downloading update… %1$d%%</string>
     <string name="update_installing">Installing update…</string>
     <string name="update_failed">Update failed: %1$s</string>
+    <string name="menu_prev">⏮ Previous</string>
+    <string name="menu_back">⏪ 10 s</string>
+    <string name="menu_fwd">10 s ⏩</string>
+    <string name="menu_next">Next ⏭</string>
+    <string name="menu_speed">Speed %1$s</string>
+    <string name="menu_subs">Subtitles</string>
+    <string name="menu_zoom">Picture</string>
+    <string name="menu_full">Full screen</string>
+    <string name="menu_full_exit">Exit full screen</string>
+    <string name="menu_subs_mode">SUBTITLES</string>
+    <string name="menu_subs_lang">TRANSLATE TO</string>
+    <string name="subs_mode_auto">Auto (lectures in other languages only)</string>
+    <string name="subs_mode_off">Off</string>
+    <string name="subs_mode_on">Always on</string>
+    <string name="speed_set">Speed: %1$s</string>
+    <string name="subs_lang_set">Subtitle language: %1$s</string>
+    <string name="lecture_next">Next lecture…</string>
+    <string name="lecture_prev">Previous lecture…</string>
 </resources>

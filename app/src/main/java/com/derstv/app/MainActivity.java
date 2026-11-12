@@ -23,6 +23,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -34,7 +35,19 @@ import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -43,7 +56,8 @@ import java.util.regex.Pattern;
  *
  * İmleç modu : yön tuşları imleci gezdirir, OK tıklar, kenara gelince sayfa kayar.
  * Video modu : OK oynat/durdur, sol/sağ 10 sn geri/ileri, yukarı/aşağı imlece döner.
- * Uzun OK    : iki mod arasında geçiş.  Menü tuşu: yakınlaştırma seviyesi.
+ * Uzun OK    : imleç modunda video moduna geçiş, video modunda Türkçe altyazı aç/kapat.
+ * Menü tuşu  : video modunda Türkçe altyazı aç/kapat, diğer sayfalarda yakınlaştırma.
  */
 public class MainActivity extends Activity {
 
@@ -165,6 +179,8 @@ public class MainActivity extends Activity {
         web.setFocusableInTouchMode(true);
         web.requestFocus();
 
+        web.addJavascriptInterface(new SubBridge(), "DTVSub");
+
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
@@ -179,6 +195,7 @@ public class MainActivity extends Activity {
                 viewportFixes = 0;
                 applyViewport();
                 updateModeForUrl(url);
+                injectSubtitles(url);
                 CookieManager.getInstance().flush();
             }
 
@@ -188,6 +205,7 @@ public class MainActivity extends Activity {
                 viewportFixes = 0;
                 applyViewport();
                 updateModeForUrl(url);
+                injectSubtitles(url);
             }
 
             @Override
@@ -292,7 +310,12 @@ public class MainActivity extends Activity {
                 if (down) videoCommand(String.valueOf(-FAST_SEEK_SEC));
                 return true;
             case KeyEvent.KEYCODE_MENU:
-                if (down && e.getRepeatCount() == 0) cycleZoom();
+                if (down && e.getRepeatCount() == 0) {
+                    if (videoMode) toggleSubtitles(); else cycleZoom();
+                }
+                return true;
+            case KeyEvent.KEYCODE_CAPTIONS:
+                if (down && e.getRepeatCount() == 0) toggleSubtitles();
                 return true;
             case KeyEvent.KEYCODE_PAGE_DOWN:
             case KeyEvent.KEYCODE_CHANNEL_DOWN:
@@ -359,8 +382,10 @@ public class MainActivity extends Activity {
     private void onLongOk() {
         String url = web.getUrl();
         boolean lecture = url != null && url.contains("/learn/lecture/");
-        if (lecture || videoMode) {
-            setVideoMode(!videoMode, true);
+        if (videoMode) {
+            toggleSubtitles();
+        } else if (lecture) {
+            setVideoMode(true, true);
         } else {
             cycleZoom();
         }
@@ -483,7 +508,7 @@ public class MainActivity extends Activity {
         }
         if (announce) {
             if (on) {
-                showHint("Video modu  •  OK: oynat/durdur  •  ◀ ▶: 10 sn  •  ▼: tam ekran  •  ▲: imleç (tam ekranda: yakınlaştır)", 4000);
+                showHint("Video modu  •  OK: oynat/durdur  •  ◀ ▶: 10 sn  •  ▼: tam ekran  •  ▲: imleç (tam ekranda: yakınlaştır)  •  Uzun OK: Türkçe altyazı", 4000);
             } else {
                 showHint("İmleç modu  •  Uzun OK: video modu", 2000);
             }
@@ -616,6 +641,171 @@ public class MainActivity extends Activity {
         resumeUrl = key;
         showHint("Video hatası alındı, ders yeniden yükleniyor… (" + errorRecoveries + "/3)", 4000);
         web.reload();
+    }
+
+    // ------------------------------------------------------------------ Turkish subtitles
+
+    private String subScript = null;
+    private final ExecutorService subExec = Executors.newSingleThreadExecutor();
+
+    private boolean subOn() { return prefs.getBoolean("subOn", true); }
+
+    /** Ders sayfasına Türkçe altyazı katmanını (assets/subtitles.js) yükler. */
+    private void injectSubtitles(String url) {
+        if (url == null || !url.contains("/learn/lecture/")) return;
+        if (subScript == null) {
+            try {
+                InputStream in = getAssets().open("subtitles.js");
+                subScript = new String(readAll(in), "UTF-8");
+            } catch (Exception ex) { return; }
+        }
+        web.evaluateJavascript(subScript + "\n;window.__dtvSub&&window.__dtvSub.setOn(" + subOn() + ");", null);
+    }
+
+    private void toggleSubtitles() {
+        boolean on = !subOn();
+        prefs.edit().putBoolean("subOn", on).apply();
+        injectSubtitles(web.getUrl());
+        web.evaluateJavascript("window.__dtvSub&&window.__dtvSub.setOn(" + on + ")", null);
+        showHint(on ? "Türkçe altyazı: AÇIK" : "Türkçe altyazı: KAPALI", 2000);
+    }
+
+    private static byte[] readAll(InputStream in) throws java.io.IOException {
+        try {
+            ByteArrayOutputStream bo = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+            return bo.toByteArray();
+        } finally {
+            in.close();
+        }
+    }
+
+    private static String httpGet(String url) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        c.setConnectTimeout(15000);
+        c.setReadTimeout(20000);
+        c.setRequestProperty("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36");
+        try {
+            int code = c.getResponseCode();
+            if (code != 200) throw new java.io.IOException("HTTP " + code);
+            return new String(readAll(c.getInputStream()), "UTF-8");
+        } finally {
+            c.disconnect();
+        }
+    }
+
+    /** Google Çeviri (gtx) ile metni Türkçeye çevirir. */
+    private static String translateText(String q) throws Exception {
+        String body = httpGet("https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=tr&dt=t&q="
+                + URLEncoder.encode(q, "UTF-8"));
+        JSONArray segs = new JSONArray(body).getJSONArray(0);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < segs.length(); i++) {
+            Object o = segs.getJSONArray(i).opt(0);
+            if (o instanceof String) sb.append((String) o);
+        }
+        return sb.toString();
+    }
+
+    /** Yedek: her satırı ayrı q parametresiyle gönderir, cevap satır satır gelir. */
+    private static List<String> translateDict(List<String> src) throws Exception {
+        StringBuilder u = new StringBuilder("https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=tr");
+        for (String s : src) u.append("&q=").append(URLEncoder.encode(s.replace('\n', ' '), "UTF-8"));
+        JSONArray a = new JSONArray(httpGet(u.toString()));
+        List<String> out = new ArrayList<>();
+        for (int i = 0; i < a.length(); i++) {
+            Object o = a.get(i);
+            out.add(o instanceof JSONArray ? ((JSONArray) o).optString(0, "") : String.valueOf(o));
+        }
+        if (out.size() != src.size()) throw new java.io.IOException("çeviri satır sayısı tutmadı");
+        return out;
+    }
+
+    /** Satırları tek istekte çevirir; satır sayısı tutmazsa ikiye bölerek tekrar dener. */
+    private static List<String> translateLines(List<String> src) throws Exception {
+        List<String> out = new ArrayList<>();
+        if (src.isEmpty()) return out;
+        StringBuilder q = new StringBuilder();
+        for (int i = 0; i < src.size(); i++) {
+            if (i > 0) q.append('\n');
+            q.append(src.get(i).replace('\n', ' '));
+        }
+        String res;
+        try {
+            res = translateText(q.toString());
+        } catch (Exception ex) {
+            return translateDict(src);   // yedek çeviri adresi
+        }
+        String[] parts = res.split("\n", -1);
+        List<String> clean = new ArrayList<>();
+        for (String p : parts) clean.add(p.trim());
+        while (clean.size() > src.size() && clean.get(clean.size() - 1).isEmpty()) clean.remove(clean.size() - 1);
+        if (clean.size() == src.size()) return clean;
+        if (src.size() == 1) {
+            out.add(res.replace('\n', ' ').trim());
+            return out;
+        }
+        int mid = src.size() / 2;
+        out.addAll(translateLines(src.subList(0, mid)));
+        out.addAll(translateLines(src.subList(mid, src.size())));
+        return out;
+    }
+
+    private void subCallback(final String id, final boolean ok, final String data) {
+        handler.post(new Runnable() {
+            @Override public void run() {
+                web.evaluateJavascript("window.__dtvSubCb&&window.__dtvSubCb(" + JSONObject.quote(id) + ","
+                        + ok + "," + JSONObject.quote(data == null ? "" : data) + ")", null);
+            }
+        });
+    }
+
+    /** subtitles.js ile uygulama arasındaki köprü (ağ istekleri CORS'a takılmasın diye burada yapılır). */
+    private class SubBridge {
+        @JavascriptInterface
+        public void translate(final String id, final String json) {
+            subExec.execute(new Runnable() {
+                @Override public void run() {
+                    try {
+                        JSONArray a = new JSONArray(json);
+                        List<String> src = new ArrayList<>();
+                        for (int i = 0; i < a.length(); i++) src.add(a.optString(i, ""));
+                        JSONArray res = new JSONArray();
+                        for (String s : translateLines(src)) res.put(s);
+                        subCallback(id, true, res.toString());
+                    } catch (Exception ex) {
+                        subCallback(id, false, String.valueOf(ex.getMessage()));
+                    }
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void fetchText(final String id, final String url) {
+            subExec.execute(new Runnable() {
+                @Override public void run() {
+                    try {
+                        Uri u = Uri.parse(url);
+                        String host = u.getHost() == null ? "" : u.getHost();
+                        if (!"https".equals(u.getScheme()) || !host.endsWith(".udemycdn.com")) {
+                            throw new SecurityException("izin verilmeyen adres");
+                        }
+                        subCallback(id, true, httpGet(url));
+                    } catch (Exception ex) {
+                        subCallback(id, false, String.valueOf(ex.getMessage()));
+                    }
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void status(final String msg) {
+            handler.post(new Runnable() {
+                @Override public void run() { if (videoMode) showHint(msg, 3000); }
+            });
+        }
     }
 
     // ------------------------------------------------------------------ quality

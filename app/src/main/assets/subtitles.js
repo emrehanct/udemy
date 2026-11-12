@@ -52,7 +52,7 @@
 
   // ---------------------------------------------------------------- Udemy verisi
   function lectureInfo() {
-    var m = location.pathname.match(/\/course\/([^\/]+)\/learn\/lecture\/(\d+)/);
+    var m = location.pathname.match(/\/course\/(.+?)\/learn\/lecture\/(\d+)/);
     return m ? { slug: m[1], id: m[2] } : null;
   }
   function authHeaders() {
@@ -70,6 +70,8 @@
   var courseIds = {};
   function courseId(slug) {
     if (courseIds[slug]) return Promise.resolve(courseIds[slug]);
+    var d = slug.match(/^draft\/(\d+)$/);   // taslak kurslar: /course/draft/<id>/learn/...
+    if (d) return Promise.resolve(d[1]);
     var els = document.querySelectorAll('[data-module-args]');
     for (var i = 0; i < els.length; i++) {
       var m = (els[i].getAttribute('data-module-args') || '').match(/"courseId"\s*:\s*(\d+)/);
@@ -88,7 +90,7 @@
   function pick(caps) {
     var tr = null, en = null, enAuto = null, any = null;
     caps.forEach(function (c) {
-      if (!c || !c.url) return;
+      if (!c || !c.url || (c.status !== undefined && c.status !== 1)) return;
       var loc = String(c.locale_id || (c.locale && c.locale.locale) || '').toLowerCase();
       any = any || c;
       if (loc.indexOf('tr') === 0) tr = c;

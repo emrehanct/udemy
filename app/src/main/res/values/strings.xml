@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">EduCast TV</string>
+
+    <string name="disclaimer">This is not an official app. EduCast TV is an independent (unofficial) client that lets users watch the learning content they already own on a TV interface.\n\nYour sign-in and viewing data stay on this TV only. They are never sent to the developer or to any other server.</string>
+
+    <string name="hint_welcome">Arrows: cursor   •   OK: click   •   Long OK: text size / video mode   •   Back: back</string>
+    <string name="hint_video_mode">Video mode  •  OK: play/pause  •  ◀ ▶: 10 s  •  ▼: full screen  •  ▲: cursor (full screen: zoom)  •  Long OK: subtitles</string>
+    <string name="hint_cursor_mode">Cursor mode  •  Long OK: video mode</string>
+    <string name="hint_fullscreen">Full screen  •  ▲: fit / fill / zoom  •  ▼ or Back: exit</string>
+    <string name="err_page">The page could not be opened. Check your internet connection and reopen the app.</string>
+    <string name="exit_again">Press Back again to exit</string>
+    <string name="no_video">No video found on this page</string>
+
+    <string name="video_zoom">Picture: %1$s  •  ▲: change</string>
+    <string-array name="zoom_names">
+        <item>Fit to screen</item>
+        <item>Fill screen</item>
+        <item>Zoom 1.2x</item>
+        <item>Zoom 1.4x</item>
+    </string-array>
+    <string name="text_size">Text size: %1$s</string>
+    <string-array name="text_sizes">
+        <item>Large</item>
+        <item>Normal</item>
+        <item>Small</item>
+    </string-array>
+    <string name="video_quality">Video quality: %1$sp</string>
+    <string name="video_resumed">Video continues where it stopped</string>
+    <string name="video_failed">The video cannot be played. Go to the next lecture or restart the app.</string>
+    <string name="video_error_reload">Video error, reloading the lecture… (%1$d/3)</string>
+
+    <string name="subs_on">Subtitles: ON</string>
+    <string name="subs_off">Subtitles: OFF</string>
+    <string name="sub_preparing">Preparing subtitles…</string>
+    <string name="sub_ready">Subtitles ready</string>
+    <string name="sub_none">This lecture has no subtitles</string>
+    <string name="sub_failed">Subtitles could not be loaded</string>
+
+    <string name="update_title">Update available</string>
+    <string name="update_message">%1$s is ready to install.</string>
+    <string name="update_now">Update</string>
+    <string name="update_later">Later</string>
+    <string name="update_downloading">Downloading update… %1$d%%</string>
+    <string name="update_installing">Installing update…</string>
+    <string name="update_failed">Update failed: %1$s</string>
+</resources>

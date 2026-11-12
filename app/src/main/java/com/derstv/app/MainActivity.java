@@ -39,6 +39,8 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import org.json.JSONArray;
@@ -133,6 +135,8 @@ public class MainActivity extends Activity {
                 Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
         hlp.bottomMargin = dp(40);
         root.addView(hint, hlp);
+
+        buildPlayerMenu();
 
         setContentView(root);
         setupWebView();
@@ -256,6 +260,8 @@ public class MainActivity extends Activity {
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
                 web.setVisibility(View.INVISIBLE);
                 cursor.bringToFront();
+                menuBar.bringToFront();
+                menuPopup.bringToFront();
                 hint.bringToFront();
             }
 
@@ -333,7 +339,7 @@ public class MainActivity extends Activity {
                 return true;
             case KeyEvent.KEYCODE_MENU:
                 if (down && e.getRepeatCount() == 0) {
-                    if (videoMode) toggleSubtitles(); else cycleZoom();
+                    if (videoMode) { if (menuVisible()) hideMenu(); else showMenu(); } else cycleZoom();
                 }
                 return true;
             case KeyEvent.KEYCODE_CAPTIONS:
@@ -368,7 +374,7 @@ public class MainActivity extends Activity {
                     if (e.getEventTime() - okDownTime >= LONG_PRESS_MS) {
                         onLongOk(); // tekrar göndermeyen kumandalar için
                     } else if (videoMode) {
-                        videoCommand("toggle");
+                        onMenuOk();
                     } else {
                         click();
                     }
@@ -382,6 +388,10 @@ public class MainActivity extends Activity {
                 || code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN;
         if (isDpad) {
             if (!down) return true;
+            if (videoMode && menuVisible()) {
+                onMenuDpad(code);
+                return true;
+            }
             if (videoMode) {
                 if (code == KeyEvent.KEYCODE_DPAD_LEFT) videoCommand(String.valueOf(-SEEK_SEC));
                 else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) videoCommand(String.valueOf(SEEK_SEC));
@@ -402,6 +412,7 @@ public class MainActivity extends Activity {
     /** Uzun OK: ders sayfasında video/imleç modu değiştirir, diğer sayfalarda yazı boyutunu değiştirir
      *  (Mi Box gibi Menü tuşu olmayan kumandalar için). */
     private void onLongOk() {
+        if (menuVisible()) { onMenuOk(); return; }
         String url = web.getUrl();
         boolean lecture = url != null && url.contains("/learn/lecture/");
         if (videoMode) {
@@ -414,6 +425,14 @@ public class MainActivity extends Activity {
     }
 
     private void onBackKey() {
+        if (menuPopup.getVisibility() == View.VISIBLE) {
+            hidePopup();
+            return;
+        }
+        if (menuVisible()) {
+            hideMenu();
+            return;
+        }
         if (isFullscreen()) {
             exitFullscreen();
             return;
@@ -516,6 +535,7 @@ public class MainActivity extends Activity {
 
     private void setVideoMode(boolean on, boolean announce) {
         videoMode = on;
+        if (!on) hideMenu();
         cursor.setVisibility(on ? View.INVISIBLE : View.VISIBLE);
         if (on) {
             // Ders açılınca önce en yüksek kaliteyi seç, ardından tam ekrana geç.
@@ -620,6 +640,7 @@ public class MainActivity extends Activity {
                     + "var t=(d.textContent||'');if(t.length<600&&re.test(t))err=true;}"
                     + "var vs=document.querySelectorAll('video'),v=null,b=0;"
                     + "for(var j=0;j<vs.length;j++){var r=vs[j].getBoundingClientRect(),s=r.width*r.height;if(s>=b){b=s;v=vs[j];}}"
+                    + "if(v&&" + speedStr() + "!==1&&Math.abs(v.playbackRate-" + speedStr() + ")>0.01)v.playbackRate=" + speedStr() + ";"
                     + "if(err)return 'err';if(!v)return 'none';"
                     + "if(R>0){if(v.readyState>=1&&isFinite(v.duration)&&v.duration>0){"
                     + "if(Math.abs(v.currentTime-R)>4)v.currentTime=Math.min(R,v.duration-1);"
@@ -675,9 +696,10 @@ public class MainActivity extends Activity {
         return "off".equals(m) || "on".equals(m) ? m : "auto";
     }
 
-    /** Altyazı hedef dili = TV'nin dili (Türkçe değilse İngilizce). */
-    private static String subLang() {
-        return "tr".equals(Locale.getDefault().getLanguage()) ? "tr" : "en";
+    /** Altyazı hedef dili: menüden seçilen dil; seçilmediyse TV'nin dili (Türkçe değilse İngilizce). */
+    private String subLang() {
+        String def = "tr".equals(Locale.getDefault().getLanguage()) ? "tr" : "en";
+        return prefs.getString("subLang", def);
     }
 
     /** Ders sayfasına Türkçe altyazı katmanını (assets/subtitles.js) yükler. */
@@ -693,15 +715,18 @@ public class MainActivity extends Activity {
                 + "window.__dtvSub&&window.__dtvSub.setMode('" + subMode() + "');", null);
     }
 
-    /** Uzun OK / Menü: Otomatik → Kapalı → Her zaman açık → Otomatik */
+    /** Uzun OK: Otomatik → Kapalı → Her zaman açık → Otomatik */
     private void toggleSubtitles() {
         String cur = subMode();
-        String next = "auto".equals(cur) ? "off" : "off".equals(cur) ? "on" : "auto";
+        setSubMode("auto".equals(cur) ? "off" : "off".equals(cur) ? "on" : "auto");
+    }
+
+    private void setSubMode(String next) {
         prefs.edit().putString("subMode", next).apply();
         injectSubtitles(web.getUrl());
         web.evaluateJavascript("window.__dtvSub&&window.__dtvSub.setMode('" + next + "')", null);
         int id = "off".equals(next) ? R.string.subs_off : "on".equals(next) ? R.string.subs_on : R.string.subs_auto;
-        showHint(getString(id), 3500);
+        showHint(getString(id), 3000);
     }
 
     private static byte[] readAll(InputStream in) throws java.io.IOException {
@@ -845,6 +870,337 @@ public class MainActivity extends Activity {
                 }
             });
         }
+    }
+
+    // ------------------------------------------------------------------ player menu (VLC tarzı alt menü)
+
+    private static final String[] MENU_IDS = {"prev", "back", "play", "fwd", "next", "speed", "subs", "zoom", "full"};
+    private static final String[] SPEEDS = {"0.75", "1", "1.25", "1.5", "1.75", "2"};
+    private static final String[] SUB_LANGS = {"tr", "en", "de", "fr", "es", "it", "pt", "ru", "ar", "nl"};
+    private static final String[] SUB_LANG_NAMES = {"Türkçe", "English", "Deutsch", "Français", "Español",
+            "Italiano", "Português", "Русский", "العربية", "Nederlands"};
+    private static final long MENU_HIDE_MS = 6000;
+
+    private LinearLayout menuBar, menuRow, menuPopup;
+    private TextView menuTime;
+    private ProgressBar menuProgress;
+    private final List<TextView> menuItems = new ArrayList<>();
+    private final List<TextView> popupItems = new ArrayList<>();
+    private final List<String> popupValues = new ArrayList<>();
+    private int menuIndex = 2, popupIndex = 0;
+    private String popupKind = null;
+    private boolean videoPaused = false;
+
+    private float speed() {
+        try { return Float.parseFloat(prefs.getString("speed", "1")); } catch (Exception e) { return 1f; }
+    }
+
+    private String speedStr() { return String.format(Locale.US, "%.2f", speed()); }
+
+    private static String speedLabel(String v) {
+        return v.replace(".", ",") + "×";
+    }
+
+    private GradientDrawable roundBg(int color, float radiusDp) {
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(color);
+        g.setCornerRadius(dp(radiusDp));
+        return g;
+    }
+
+    /** Alt menüyü (ilerleme çubuğu + düğmeler) ve açılır listeyi kurar; başlangıçta gizlidir. */
+    private void buildPlayerMenu() {
+        menuBar = new LinearLayout(this);
+        menuBar.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable fade = new GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP,
+                new int[]{0xEE000000, 0xB0000000, 0x00000000});
+        menuBar.setBackground(fade);
+        menuBar.setPadding(dp(32), dp(36), dp(32), dp(20));
+        menuBar.setVisibility(View.GONE);
+
+        LinearLayout timeRow = new LinearLayout(this);
+        timeRow.setOrientation(LinearLayout.HORIZONTAL);
+        timeRow.setGravity(Gravity.CENTER_VERTICAL);
+        menuTime = new TextView(this);
+        menuTime.setTextColor(Color.WHITE);
+        menuTime.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        menuTime.setText("0:00 / 0:00");
+        menuTime.setPadding(0, 0, dp(16), 0);
+        timeRow.addView(menuTime);
+        menuProgress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        menuProgress.setMax(1000);
+        menuProgress.setProgressTintList(android.content.res.ColorStateList.valueOf(0xFFF26B3A));
+        menuProgress.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(0x66FFFFFF));
+        timeRow.addView(menuProgress, new LinearLayout.LayoutParams(0, dp(8), 1f));
+        menuBar.addView(timeRow);
+
+        menuRow = new LinearLayout(this);
+        menuRow.setOrientation(LinearLayout.HORIZONTAL);
+        menuRow.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowLp.topMargin = dp(14);
+        for (int i = 0; i < MENU_IDS.length; i++) {
+            TextView t = new TextView(this);
+            t.setTextColor(Color.WHITE);
+            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+            t.setPadding(dp(14), dp(8), dp(14), dp(8));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.leftMargin = lp.rightMargin = dp(4);
+            menuRow.addView(t, lp);
+            menuItems.add(t);
+        }
+        menuBar.addView(menuRow, rowLp);
+        root.addView(menuBar, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
+
+        menuPopup = new LinearLayout(this);
+        menuPopup.setOrientation(LinearLayout.VERTICAL);
+        menuPopup.setBackground(roundBg(0xF0202024, 10));
+        menuPopup.setPadding(dp(6), dp(6), dp(6), dp(6));
+        menuPopup.setVisibility(View.GONE);
+        root.addView(menuPopup, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.LEFT));
+        refreshMenuLabels();
+    }
+
+    private boolean menuVisible() {
+        return menuBar != null && menuBar.getVisibility() == View.VISIBLE;
+    }
+
+    private void showMenu() {
+        if (!videoMode) return;
+        if (!menuVisible()) menuIndex = 2;   // açılınca odak oynat/durdur düğmesinde
+        menuBar.setVisibility(View.VISIBLE);
+        menuBar.bringToFront();
+        menuPopup.bringToFront();
+        hint.bringToFront();
+        refreshMenuLabels();
+        handler.removeCallbacks(menuTicker);
+        handler.post(menuTicker);
+        bumpMenuTimer();
+    }
+
+    private void hideMenu() {
+        if (menuBar == null) return;
+        hidePopup();
+        menuBar.setVisibility(View.GONE);
+        handler.removeCallbacks(menuTicker);
+        handler.removeCallbacks(menuAutoHide);
+    }
+
+    private final Runnable menuAutoHide = new Runnable() {
+        @Override public void run() { hideMenu(); }
+    };
+
+    private void bumpMenuTimer() {
+        handler.removeCallbacks(menuAutoHide);
+        handler.postDelayed(menuAutoHide, menuPopup.getVisibility() == View.VISIBLE ? MENU_HIDE_MS * 2 : MENU_HIDE_MS);
+    }
+
+    private String menuLabel(String id) {
+        switch (id) {
+            case "prev": return getString(R.string.menu_prev);
+            case "back": return getString(R.string.menu_back);
+            case "play": return videoPaused ? "▶" : "⏸";
+            case "fwd": return getString(R.string.menu_fwd);
+            case "next": return getString(R.string.menu_next);
+            case "speed": return getString(R.string.menu_speed, speedLabel(trimSpeed(speed())));
+            case "subs": return getString(R.string.menu_subs);
+            case "zoom": return getString(R.string.menu_zoom);
+            default: return getString(isFullscreen() ? R.string.menu_full_exit : R.string.menu_full);
+        }
+    }
+
+    private static String trimSpeed(float f) {
+        String s = String.format(Locale.US, "%.2f", f);
+        while (s.contains(".") && (s.endsWith("0") || s.endsWith("."))) s = s.substring(0, s.length() - 1);
+        return s;
+    }
+
+    private void refreshMenuLabels() {
+        for (int i = 0; i < menuItems.size(); i++) {
+            TextView t = menuItems.get(i);
+            t.setText(menuLabel(MENU_IDS[i]));
+            boolean sel = i == menuIndex && menuPopup.getVisibility() != View.VISIBLE;
+            boolean open = i == menuIndex && menuPopup.getVisibility() == View.VISIBLE;
+            t.setBackground(sel ? roundBg(0xFFF26B3A, 8) : open ? roundBg(0x66F26B3A, 8) : null);
+            t.setTypeface(null, sel ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+        }
+    }
+
+    /** Menü açıkken her yarım saniyede süre, ilerleme ve oynat/durdur durumunu günceller. */
+    private final Runnable menuTicker = new Runnable() {
+        @Override public void run() {
+            if (!menuVisible()) return;
+            web.evaluateJavascript("(function(){var vs=document.querySelectorAll('video'),v=null,b=0;"
+                    + "for(var i=0;i<vs.length;i++){var r=vs[i].getBoundingClientRect(),s=r.width*r.height;if(s>=b){b=s;v=vs[i];}}"
+                    + "if(!v)return 'none';return (v.paused?'p':'r')+'|'+v.currentTime+'|'+(isFinite(v.duration)?v.duration:0);})()",
+                    new ValueCallback<String>() {
+                        @Override public void onReceiveValue(String value) {
+                            if (value == null || !menuVisible()) return;
+                            String[] p = value.replace("\"", "").split("\\|");
+                            if (p.length < 3) return;
+                            try {
+                                double cur = Double.parseDouble(p[1]), dur = Double.parseDouble(p[2]);
+                                videoPaused = p[0].equals("p");
+                                menuTime.setText(fmt(String.valueOf((long) cur)) + " / " + fmt(String.valueOf((long) dur)));
+                                menuProgress.setProgress(dur > 0 ? (int) (cur * 1000 / dur) : 0);
+                                menuItems.get(2).setText(menuLabel("play"));
+                            } catch (NumberFormatException ignored) { }
+                        }
+                    });
+            handler.postDelayed(this, 500);
+        }
+    };
+
+    private void onMenuOk() {
+        if (menuPopup.getVisibility() == View.VISIBLE) { choosePopup(); return; }
+        if (!menuVisible()) { showMenu(); return; }
+        bumpMenuTimer();
+        String id = MENU_IDS[menuIndex];
+        switch (id) {
+            case "prev": hideMenu(); goLecture(-1); break;
+            case "next": hideMenu(); goLecture(1); break;
+            case "back": videoCommand(String.valueOf(-SEEK_SEC)); break;
+            case "fwd": videoCommand(String.valueOf(SEEK_SEC)); break;
+            case "play":
+                videoCommand("toggle");
+                videoPaused = !videoPaused;
+                refreshMenuLabels();
+                break;
+            case "full": toggleFullscreen(); refreshMenuLabels(); break;
+            default: openPopup(id); break;
+        }
+    }
+
+    private void onMenuDpad(int code) {
+        bumpMenuTimer();
+        if (menuPopup.getVisibility() == View.VISIBLE) {
+            if (code == KeyEvent.KEYCODE_DPAD_UP) { popupIndex = Math.max(0, popupIndex - 1); refreshPopup(); }
+            else if (code == KeyEvent.KEYCODE_DPAD_DOWN) { popupIndex = Math.min(popupItems.size() - 1, popupIndex + 1); refreshPopup(); }
+            else hidePopup();
+            return;
+        }
+        if (code == KeyEvent.KEYCODE_DPAD_LEFT) menuIndex = Math.max(0, menuIndex - 1);
+        else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) menuIndex = Math.min(MENU_IDS.length - 1, menuIndex + 1);
+        else if (code == KeyEvent.KEYCODE_DPAD_UP) { hideMenu(); return; }
+        refreshMenuLabels();
+    }
+
+    private void addPopupItem(String label, String value, boolean checked) {
+        TextView t = new TextView(this);
+        t.setTextColor(Color.WHITE);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+        t.setPadding(dp(16), dp(7), dp(28), dp(7));
+        t.setText((checked ? "✓  " : "     ") + label);
+        menuPopup.addView(t);
+        popupItems.add(t);
+        popupValues.add(value);
+        if (checked) popupIndex = popupItems.size() - 1;
+    }
+
+    private void addPopupHeader(String label) {
+        TextView t = new TextView(this);
+        t.setTextColor(0xFFAAAAAA);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        t.setPadding(dp(16), dp(8), dp(16), dp(2));
+        t.setText(label);
+        menuPopup.addView(t);
+    }
+
+    private void openPopup(String kind) {
+        menuPopup.removeAllViews();
+        popupItems.clear();
+        popupValues.clear();
+        popupIndex = 0;
+        popupKind = kind;
+        if ("speed".equals(kind)) {
+            float cur = speed();
+            for (String v : SPEEDS) addPopupItem(speedLabel(v), v, Math.abs(Float.parseFloat(v) - cur) < 0.01f);
+        } else if ("zoom".equals(kind)) {
+            String[] names = getResources().getStringArray(R.array.zoom_names);
+            int z = zoomIndex();
+            for (int i = 0; i < names.length; i++) addPopupItem(names[i], String.valueOf(i), i == z);
+        } else {
+            String mode = subMode(), lang = subLang();
+            addPopupHeader(getString(R.string.menu_subs_mode));
+            addPopupItem(getString(R.string.subs_mode_auto), "mode:auto", "auto".equals(mode));
+            addPopupItem(getString(R.string.subs_mode_off), "mode:off", "off".equals(mode));
+            addPopupItem(getString(R.string.subs_mode_on), "mode:on", "on".equals(mode));
+            addPopupHeader(getString(R.string.menu_subs_lang));
+            int keep = popupIndex;
+            for (int i = 0; i < SUB_LANGS.length; i++) addPopupItem(SUB_LANG_NAMES[i], "lang:" + SUB_LANGS[i], SUB_LANGS[i].equals(lang));
+            popupIndex = keep;   // odak mod seçiminde başlasın
+        }
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) menuPopup.getLayoutParams();
+        TextView anchor = menuItems.get(menuIndex);
+        lp.leftMargin = Math.max(dp(8), menuBar.getLeft() + menuRow.getLeft() + anchor.getLeft());
+        lp.bottomMargin = menuBar.getHeight() - menuRow.getTop() + dp(6);
+        menuPopup.setLayoutParams(lp);
+        menuPopup.setVisibility(View.VISIBLE);
+        menuPopup.bringToFront();
+        refreshPopup();
+        refreshMenuLabels();
+        bumpMenuTimer();
+    }
+
+    private void refreshPopup() {
+        for (int i = 0; i < popupItems.size(); i++) {
+            popupItems.get(i).setBackground(i == popupIndex ? roundBg(0xFFF26B3A, 6) : null);
+        }
+    }
+
+    private void hidePopup() {
+        if (menuPopup == null || menuPopup.getVisibility() != View.VISIBLE) return;
+        menuPopup.setVisibility(View.GONE);
+        popupKind = null;
+        refreshMenuLabels();
+    }
+
+    private void choosePopup() {
+        if (popupIndex < 0 || popupIndex >= popupValues.size()) { hidePopup(); return; }
+        String v = popupValues.get(popupIndex);
+        if ("speed".equals(popupKind)) {
+            prefs.edit().putString("speed", v).apply();
+            web.evaluateJavascript("(function(){var vs=document.querySelectorAll('video');for(var i=0;i<vs.length;i++)vs[i].playbackRate=" + v + ";})()", null);
+            showHint(getString(R.string.speed_set, speedLabel(v)), 1500);
+        } else if ("zoom".equals(popupKind)) {
+            prefs.edit().putInt("videoZoom", Integer.parseInt(v)).apply();
+            if (!isFullscreen()) enterFullscreen(); else applyVideoZoom();
+            showHint(getString(R.string.video_zoom, getResources().getStringArray(R.array.zoom_names)[Integer.parseInt(v)]), 1500);
+        } else if (v.startsWith("mode:")) {
+            setSubMode(v.substring(5));
+        } else if (v.startsWith("lang:")) {
+            prefs.edit().putString("subLang", v.substring(5)).apply();
+            if ("off".equals(subMode())) prefs.edit().putString("subMode", "auto").apply();
+            injectSubtitles(web.getUrl());
+            showHint(getString(R.string.subs_lang_set, popupItems.get(popupIndex).getText().toString().trim().replace("✓", "").trim()), 2000);
+        }
+        hidePopup();
+        refreshMenuLabels();
+        bumpMenuTimer();
+    }
+
+    /** Önceki / sonraki derse geçer: önce Udemy'nin kendi düğmesi, yoksa müfredat listesi. */
+    private void goLecture(int dir) {
+        String js = "(function(dir){var m=location.pathname.match(/\\/course\\/(.+?)\\/learn\\/lecture\\/(\\d+)/);if(!m)return 'no';"
+                + "var b=document.querySelector(dir>0?'[data-purpose=\"go-to-next\"]':'[data-purpose=\"go-to-previous\"]');"
+                + "if(b){b.click();return 'click';}"
+                + "var slug=m[1],lid=m[2],d=slug.match(/^draft\\/(\\d+)$/);"
+                + "function cid(){if(d)return Promise.resolve(d[1]);var e=document.querySelectorAll('[data-module-args]');"
+                + "for(var i=0;i<e.length;i++){var x=(e[i].getAttribute('data-module-args')||'').match(/\"courseId\"\\s*:\\s*(\\d+)/);if(x)return Promise.resolve(x[1]);}"
+                + "return fetch('/api-2.0/courses/'+slug+'/?fields[course]=id',{credentials:'include'}).then(function(r){return r.json();}).then(function(j){return j.id;});}"
+                + "function all(u,acc){return fetch(u,{credentials:'include'}).then(function(r){return r.json();}).then(function(j){"
+                + "acc=acc.concat(j.results||[]);return j.next?all(j.next,acc):acc;});}"
+                + "cid().then(function(c){return all('/api-2.0/courses/'+c+'/subscriber-curriculum-items/?page_size=200&fields[lecture]=id&fields[quiz]=id&fields[practice]=id&fields[chapter]=id',[]);})"
+                + ".then(function(items){var ls=items.filter(function(x){return x._class==='lecture';});"
+                + "for(var i=0;i<ls.length;i++){if(String(ls[i].id)===lid){var t=ls[i+dir];"
+                + "if(t)location.assign(location.pathname.replace(/lecture\\/\\d+/,'lecture/'+t.id));return;}}});"
+                + "return 'api';})(" + dir + ")";
+        web.evaluateJavascript(js, null);
+        showHint(getString(dir > 0 ? R.string.lecture_next : R.string.lecture_prev), 2000);
     }
 
     // ------------------------------------------------------------------ first run notice

@@ -20,7 +20,7 @@ A simple, remote-friendly Udemy client for Android TV.
 - Kumandayla kullanım: yön tuşları imleci gezdirir; ders sayfasında video modu (oynat/durdur, 10 sn ileri/geri).
 - Tam ekran, ▲ ile sığdır / doldur / yakınlaştır.
 - Her zaman en yüksek görüntü kalitesi.
-- **Türkçe altyazı:** derste Türkçe altyazı yoksa İngilizce altyazı otomatik çevrilir (uzun OK ile aç/kapat).
+- **Türkçe altyazı:** yabancı dilli derslerde altyazı otomatik Türkçeye çevrilir; Türkçe derslerde altyazı gösterilmez. Uzun OK ile Otomatik / Kapalı / Her zaman açık arasında geçilir.
 - Video hatasında dersi kendiliğinden yeniden yükler ve kaldığı yerden devam eder.
 - **Otomatik güncelleme:** yeni sürüm yayınlanınca ekranda uyarı çıkar, onaylayınca kendini günceller.
 - Arayüz Türkçe ve İngilizce (TV'nin diline göre).
@@ -35,8 +35,8 @@ A simple, remote-friendly Udemy client for Android TV.
 |---|---|---|
 | Yön tuşları | İmleci gezdirir | ◀ ▶ 10 sn geri/ileri, ▼ tam ekran, ▲ imleç (tam ekranda: yakınlaştır) |
 | OK | Tıklar | Oynat / durdur |
-| Uzun OK | Ders sayfasında video modu, diğer sayfalarda yazı boyutu | Türkçe altyazı aç/kapat |
-| Menü | Yazı boyutu | Türkçe altyazı aç/kapat |
+| Uzun OK | Ders sayfasında video modu, diğer sayfalarda yazı boyutu | Altyazı: Otomatik → Kapalı → Her zaman açık |
+| Menü | Yazı boyutu | Altyazı: Otomatik → Kapalı → Her zaman açık |
 | Geri | Geri / çıkış | Tam ekrandan / video modundan çık |
 
 ### Gizlilik ve veri güvenliği
@@ -53,7 +53,7 @@ A simple, remote-friendly Udemy client for Android TV.
 - Remote-friendly: the arrow keys move a cursor; on lecture pages, video mode gives play/pause and 10-second seek.
 - Full screen, with ▲ to fit / fill / zoom.
 - Always the highest video quality.
-- **Translated subtitles:** if a lecture has no subtitles in the TV's language, the English ones are translated automatically (Long OK toggles them).
+- **Translated subtitles:** lectures in another language get subtitles translated into the TV's language; lectures already in that language show none. Long OK cycles Auto / Off / Always on.
 - Recovers from video errors by reloading the lecture and resuming where it stopped.
 - **Automatic updates:** when a new version is published, the app asks once and updates itself.
 - English and Turkish user interface (follows the TV language).
@@ -68,8 +68,8 @@ A simple, remote-friendly Udemy client for Android TV.
 |---|---|---|
 | Arrows | Move the cursor | ◀ ▶ seek 10 s, ▼ full screen, ▲ cursor (full screen: zoom) |
 | OK | Click | Play / pause |
-| Long OK | Video mode on lecture pages, text size elsewhere | Subtitles on/off |
-| Menu | Text size | Subtitles on/off |
+| Long OK | Video mode on lecture pages, text size elsewhere | Subtitles: Auto → Off → Always on |
+| Menu | Text size | Subtitles: Auto → Off → Always on |
 | Back | Back / exit | Leave full screen / video mode |
 
 ### Privacy and data security

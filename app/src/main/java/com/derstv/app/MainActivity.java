@@ -1278,22 +1278,18 @@ public class MainActivity extends Activity {
             updateExec.execute(new Runnable() {
                 @Override public void run() {
                     try {
-                        JSONObject rel = new JSONObject(httpGet("https://api.github.com/repos/" + repo + "/releases/latest"));
-                        int latest = parseBuildNumber(rel.optString("tag_name"));
+                        // GitHub'ın normal sürüm sayfası kullanılır (API'nin saatte 60 istek sınırı yok).
+                        // Uses the plain releases page: no API rate limit, follows repo/user renames.
+                        final String tag = latestReleaseTag(repo);
+                        final int latest = parseBuildNumber(tag);
                         if (latest <= currentVersionCode() || latest == dismissedBuild) return;
-                        String apkUrl = null;
-                        JSONArray assets = rel.optJSONArray("assets");
-                        for (int i = 0; assets != null && i < assets.length(); i++) {
-                            JSONObject a = assets.getJSONObject(i);
-                            if (a.optString("name").toLowerCase(Locale.US).endsWith(".apk")) {
-                                apkUrl = a.optString("browser_download_url");
-                                break;
-                            }
-                        }
-                        if (apkUrl == null || apkUrl.isEmpty()) return;
-                        final String url = apkUrl;
-                        final String name = rel.optString("name", rel.optString("tag_name"));
-                        String body = rel.optString("body", "").trim();
+                        final String url = "https://github.com/" + repo + "/releases/download/" + tag + "/EduCastTV.apk";
+                        final String name = "EduCast TV 2.1." + latest;
+                        String body = "";
+                        try {   // sürüm notları isteğe bağlı / release notes are optional
+                            JSONObject rel = new JSONObject(httpGet("https://api.github.com/repos/" + repo + "/releases/tags/" + tag));
+                            body = rel.optString("body", "").trim();
+                        } catch (Exception ignored) { }
                         if (body.length() > 600) body = body.substring(0, 600) + "…";
                         final String notes = body;
                         handler.post(new Runnable() {
@@ -1307,6 +1303,36 @@ public class MainActivity extends Activity {
             });
         }
     };
+
+    /** github.com/<repo>/releases/latest adresinin yönlendirmesinden son sürüm etiketini (ör. "v60") okur. */
+    private static String latestReleaseTag(String repo) throws Exception {
+        String url = "https://github.com/" + repo + "/releases/latest";
+        for (int hop = 0; hop < 6; hop++) {
+            HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+            c.setInstanceFollowRedirects(false);
+            c.setConnectTimeout(15000);
+            c.setReadTimeout(20000);
+            c.setRequestProperty("User-Agent", "EduCastTV-updater");
+            try {
+                int code = c.getResponseCode();
+                String loc = c.getHeaderField("Location");
+                if (code >= 300 && code < 400 && loc != null) {
+                    int i = loc.indexOf("/releases/tag/");
+                    if (i >= 0) {
+                        String tag = loc.substring(i + "/releases/tag/".length());
+                        int q = tag.indexOf('?');
+                        return q >= 0 ? tag.substring(0, q) : tag;
+                    }
+                    url = loc.startsWith("http") ? loc : "https://github.com" + loc;   // kullanıcı/depo adı değişmiş
+                    continue;
+                }
+                throw new java.io.IOException("HTTP " + code);
+            } finally {
+                c.disconnect();
+            }
+        }
+        throw new java.io.IOException("too many redirects");
+    }
 
     private static int parseBuildNumber(String tag) {
         String d = tag == null ? "" : tag.replaceAll("[^0-9]", "");

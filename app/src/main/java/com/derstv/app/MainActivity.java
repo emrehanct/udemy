@@ -2,7 +2,12 @@ package com.derstv.app;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.app.PendingIntent;
 import android.content.Context;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.pm.PackageInstaller;
 import android.content.SharedPreferences;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -10,6 +15,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -39,7 +45,11 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -52,7 +62,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Ders TV — Udemy'yi Android TV'de kumandayla kullanmak için sade bir WebView kabuğu.
+ * EduCast TV — Udemy için resmi olmayan (unofficial) Android TV istemcisi.
+ * Unofficial Android TV client for Udemy: a WebView shell driven by the TV remote.
+ * Oturum bilgileri yalnızca cihazdaki WebView deposunda kalır; harici bir sunucuya gönderilmez.
  *
  * İmleç modu : yön tuşları imleci gezdirir, OK tıklar, kenara gelince sayfa kayar.
  * Video modu : OK oynat/durdur, sol/sağ 10 sn geri/ileri, yukarı/aşağı imlece döner.
@@ -152,7 +164,9 @@ public class MainActivity extends Activity {
         } else {
             web.loadUrl(HOME);
         }
-        showHint("Yön tuşları: imleç   •   OK: tıkla   •   Uzun OK: yazı boyutu / video modu   •   Geri: geri", 6000);
+        showHint(getString(R.string.hint_welcome), 6000);
+        handler.postDelayed(firstRunNotice, 1500);
+        handler.postDelayed(updateCheck, 8000);
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -211,7 +225,7 @@ public class MainActivity extends Activity {
             @Override
             public void onReceivedError(WebView view, WebResourceRequest req, WebResourceError err) {
                 if (req.isForMainFrame()) {
-                    showHint("Sayfa açılamadı. İnternet bağlantısını kontrol edip uygulamayı yeniden açın.", 6000);
+                    showHint(getString(R.string.err_page), 6000);
                 }
             }
         });
@@ -275,6 +289,14 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         web.onResume();
+        handler.removeCallbacks(updateCheck);
+        handler.postDelayed(updateCheck, 8000);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (intent != null && ACTION_INSTALL_STATUS.equals(intent.getAction())) onInstallStatus(intent);
     }
 
     @Override
@@ -409,7 +431,7 @@ public class MainActivity extends Activity {
             finish();
         } else {
             lastBackTime = now;
-            showHint("Çıkmak için Geri'ye tekrar basın", 2000);
+            showHint(getString(R.string.exit_again), 2000);
         }
     }
 
@@ -508,9 +530,9 @@ public class MainActivity extends Activity {
         }
         if (announce) {
             if (on) {
-                showHint("Video modu  •  OK: oynat/durdur  •  ◀ ▶: 10 sn  •  ▼: tam ekran  •  ▲: imleç (tam ekranda: yakınlaştır)  •  Uzun OK: Türkçe altyazı", 4000);
+                showHint(getString(R.string.hint_video_mode), 4000);
             } else {
-                showHint("İmleç modu  •  Uzun OK: video modu", 2000);
+                showHint(getString(R.string.hint_cursor_mode), 2000);
             }
         }
     }
@@ -521,7 +543,6 @@ public class MainActivity extends Activity {
     /** Tam ekran görüntü modları: object-fit + büyütme oranı */
     private static final String[] ZOOM_FIT = {"contain", "cover", "contain", "contain"};
     private static final float[] ZOOM_SCALE = {1f, 1f, 1.2f, 1.4f};
-    private static final String[] ZOOM_NAME = {"Ekrana sığdır", "Ekranı doldur", "Yakınlaştır 1.2x", "Yakınlaştır 1.4x"};
     /** Kullanıcı tam ekran istiyor mu? (▼ veya Geri ile kapatılana kadar true) */
     private boolean wantFull = false;
     private int fullBadCount = 0;
@@ -615,7 +636,7 @@ public class MainActivity extends Activity {
                         } catch (NumberFormatException ignored) { }
                     } else if (v.equals("resumed")) {
                         resumeAt = -1; resumeUrl = null;
-                        showHint("Video kaldığı yerden devam ediyor", 2500);
+                        showHint(getString(R.string.video_resumed), 2500);
                     } else if (v.equals("err")) {
                         recoverFromVideoError(key);
                     }
@@ -631,7 +652,7 @@ public class MainActivity extends Activity {
         if (errorRecoveries >= 3) {
             if (errorRecoveries == 3) {
                 errorRecoveries++;
-                showHint("Video oynatılamıyor. Sonraki derse geçin veya uygulamayı kapatıp yeniden açın.", 8000);
+                showHint(getString(R.string.video_failed), 8000);
             }
             return;
         }
@@ -639,7 +660,7 @@ public class MainActivity extends Activity {
         lastRecovery = now;
         resumeAt = key.equals(lastPosUrl) ? lastPos : -1;
         resumeUrl = key;
-        showHint("Video hatası alındı, ders yeniden yükleniyor… (" + errorRecoveries + "/3)", 4000);
+        showHint(getString(R.string.video_error_reload, errorRecoveries), 4000);
         web.reload();
     }
 
@@ -650,6 +671,11 @@ public class MainActivity extends Activity {
 
     private boolean subOn() { return prefs.getBoolean("subOn", true); }
 
+    /** Altyazı hedef dili = TV'nin dili (Türkçe değilse İngilizce). */
+    private static String subLang() {
+        return "tr".equals(Locale.getDefault().getLanguage()) ? "tr" : "en";
+    }
+
     /** Ders sayfasına Türkçe altyazı katmanını (assets/subtitles.js) yükler. */
     private void injectSubtitles(String url) {
         if (url == null || !url.contains("/learn/lecture/")) return;
@@ -659,7 +685,8 @@ public class MainActivity extends Activity {
                 subScript = new String(readAll(in), "UTF-8");
             } catch (Exception ex) { return; }
         }
-        web.evaluateJavascript(subScript + "\n;window.__dtvSub&&window.__dtvSub.setOn(" + subOn() + ");", null);
+        web.evaluateJavascript(subScript + "\n;window.__dtvSub&&window.__dtvSub.setLang('" + subLang() + "');"
+                + "window.__dtvSub&&window.__dtvSub.setOn(" + subOn() + ");", null);
     }
 
     private void toggleSubtitles() {
@@ -667,7 +694,7 @@ public class MainActivity extends Activity {
         prefs.edit().putBoolean("subOn", on).apply();
         injectSubtitles(web.getUrl());
         web.evaluateJavascript("window.__dtvSub&&window.__dtvSub.setOn(" + on + ")", null);
-        showHint(on ? "Türkçe altyazı: AÇIK" : "Türkçe altyazı: KAPALI", 2000);
+        showHint(getString(on ? R.string.subs_on : R.string.subs_off), 2000);
     }
 
     private static byte[] readAll(InputStream in) throws java.io.IOException {
@@ -696,9 +723,9 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Google Çeviri (gtx) ile metni Türkçeye çevirir. */
-    private static String translateText(String q) throws Exception {
-        String body = httpGet("https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=tr&dt=t&q="
+    /** Google Çeviri (gtx) ile metni hedef dile çevirir. */
+    private static String translateText(String q, String tl) throws Exception {
+        String body = httpGet("https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=" + tl + "&dt=t&q="
                 + URLEncoder.encode(q, "UTF-8"));
         JSONArray segs = new JSONArray(body).getJSONArray(0);
         StringBuilder sb = new StringBuilder();
@@ -710,8 +737,8 @@ public class MainActivity extends Activity {
     }
 
     /** Yedek: her satırı ayrı q parametresiyle gönderir, cevap satır satır gelir. */
-    private static List<String> translateDict(List<String> src) throws Exception {
-        StringBuilder u = new StringBuilder("https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=tr");
+    private static List<String> translateDict(List<String> src, String tl) throws Exception {
+        StringBuilder u = new StringBuilder("https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=" + tl);
         for (String s : src) u.append("&q=").append(URLEncoder.encode(s.replace('\n', ' '), "UTF-8"));
         JSONArray a = new JSONArray(httpGet(u.toString()));
         List<String> out = new ArrayList<>();
@@ -719,12 +746,12 @@ public class MainActivity extends Activity {
             Object o = a.get(i);
             out.add(o instanceof JSONArray ? ((JSONArray) o).optString(0, "") : String.valueOf(o));
         }
-        if (out.size() != src.size()) throw new java.io.IOException("çeviri satır sayısı tutmadı");
+        if (out.size() != src.size()) throw new java.io.IOException("line count mismatch");
         return out;
     }
 
     /** Satırları tek istekte çevirir; satır sayısı tutmazsa ikiye bölerek tekrar dener. */
-    private static List<String> translateLines(List<String> src) throws Exception {
+    private static List<String> translateLines(List<String> src, String tl) throws Exception {
         List<String> out = new ArrayList<>();
         if (src.isEmpty()) return out;
         StringBuilder q = new StringBuilder();
@@ -734,9 +761,9 @@ public class MainActivity extends Activity {
         }
         String res;
         try {
-            res = translateText(q.toString());
+            res = translateText(q.toString(), tl);
         } catch (Exception ex) {
-            return translateDict(src);   // yedek çeviri adresi
+            return translateDict(src, tl);   // yedek çeviri adresi
         }
         String[] parts = res.split("\n", -1);
         List<String> clean = new ArrayList<>();
@@ -748,8 +775,8 @@ public class MainActivity extends Activity {
             return out;
         }
         int mid = src.size() / 2;
-        out.addAll(translateLines(src.subList(0, mid)));
-        out.addAll(translateLines(src.subList(mid, src.size())));
+        out.addAll(translateLines(src.subList(0, mid), tl));
+        out.addAll(translateLines(src.subList(mid, src.size()), tl));
         return out;
     }
 
@@ -773,7 +800,7 @@ public class MainActivity extends Activity {
                         List<String> src = new ArrayList<>();
                         for (int i = 0; i < a.length(); i++) src.add(a.optString(i, ""));
                         JSONArray res = new JSONArray();
-                        for (String s : translateLines(src)) res.put(s);
+                        for (String s : translateLines(src, subLang())) res.put(s);
                         subCallback(id, true, res.toString());
                     } catch (Exception ex) {
                         subCallback(id, false, String.valueOf(ex.getMessage()));
@@ -790,7 +817,7 @@ public class MainActivity extends Activity {
                         Uri u = Uri.parse(url);
                         String host = u.getHost() == null ? "" : u.getHost();
                         if (!"https".equals(u.getScheme()) || !host.endsWith(".udemycdn.com")) {
-                            throw new SecurityException("izin verilmeyen adres");
+                            throw new SecurityException("blocked host");
                         }
                         subCallback(id, true, httpGet(url));
                     } catch (Exception ex) {
@@ -801,10 +828,203 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public void status(final String msg) {
+        public void status(final String key) {
             handler.post(new Runnable() {
-                @Override public void run() { if (videoMode) showHint(msg, 3000); }
+                @Override public void run() {
+                    int id = "preparing".equals(key) ? R.string.sub_preparing
+                            : "ready".equals(key) ? R.string.sub_ready
+                            : "nocap".equals(key) ? R.string.sub_none : R.string.sub_failed;
+                    if (videoMode) showHint(getString(id), 3000);
+                }
             });
+        }
+    }
+
+    // ------------------------------------------------------------------ first run notice
+
+    private final Runnable firstRunNotice = new Runnable() {
+        @Override public void run() {
+            if (prefs.getBoolean("disclaimerShown", false) || isFinishing()) return;
+            new AlertDialog.Builder(MainActivity.this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle(R.string.app_name)
+                    .setMessage(R.string.disclaimer)
+                    .setCancelable(false)
+                    .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
+                        @Override public void onClick(DialogInterface d, int w) {
+                            prefs.edit().putBoolean("disclaimerShown", true).apply();
+                        }
+                    })
+                    .show();
+        }
+    };
+
+    // ------------------------------------------------------------------ auto update
+
+    private static final String ACTION_INSTALL_STATUS = "io.github.tsemre.educasttv.INSTALL_STATUS";
+    private static final long UPDATE_INTERVAL_MS = 6L * 60 * 60 * 1000;
+    private final ExecutorService updateExec = Executors.newSingleThreadExecutor();
+    private boolean updateBusy = false;
+
+    /** GitHub'daki son sürümü kontrol eder (en fazla 6 saatte bir). */
+    private final Runnable updateCheck = new Runnable() {
+        @Override public void run() {
+            final String repo = getString(R.string.update_repo).trim();
+            if (repo.isEmpty() || updateBusy || isFinishing()) return;   // yerel/deneme derlemelerinde kapalı
+            long now = System.currentTimeMillis();
+            if (now - prefs.getLong("lastUpdateCheck", 0) < UPDATE_INTERVAL_MS) return;
+            prefs.edit().putLong("lastUpdateCheck", now).apply();
+            updateExec.execute(new Runnable() {
+                @Override public void run() {
+                    try {
+                        JSONObject rel = new JSONObject(httpGet("https://api.github.com/repos/" + repo + "/releases/latest"));
+                        int latest = parseBuildNumber(rel.optString("tag_name"));
+                        if (latest <= currentVersionCode()) return;
+                        String apkUrl = null;
+                        JSONArray assets = rel.optJSONArray("assets");
+                        for (int i = 0; assets != null && i < assets.length(); i++) {
+                            JSONObject a = assets.getJSONObject(i);
+                            if (a.optString("name").toLowerCase(Locale.US).endsWith(".apk")) {
+                                apkUrl = a.optString("browser_download_url");
+                                break;
+                            }
+                        }
+                        if (apkUrl == null || apkUrl.isEmpty()) return;
+                        final String url = apkUrl;
+                        final String name = rel.optString("name", rel.optString("tag_name"));
+                        String body = rel.optString("body", "").trim();
+                        if (body.length() > 600) body = body.substring(0, 600) + "…";
+                        final String notes = body;
+                        handler.post(new Runnable() {
+                            @Override public void run() { showUpdateDialog(name, notes, url); }
+                        });
+                    } catch (Exception ignored) {
+                        // Ağ yoksa bir sonraki açılışta tekrar denenir.
+                        prefs.edit().putLong("lastUpdateCheck", 0).apply();
+                    }
+                }
+            });
+        }
+    };
+
+    private static int parseBuildNumber(String tag) {
+        String d = tag == null ? "" : tag.replaceAll("[^0-9]", "");
+        try { return d.isEmpty() ? 0 : Integer.parseInt(d); } catch (NumberFormatException e) { return 0; }
+    }
+
+    @SuppressWarnings("deprecation")
+    private int currentVersionCode() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
+        } catch (Exception e) {
+            return Integer.MAX_VALUE;
+        }
+    }
+
+    private void showUpdateDialog(String name, String notes, final String url) {
+        if (isFinishing()) return;
+        String msg = getString(R.string.update_message, name) + (notes.isEmpty() ? "" : "\n\n" + notes);
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle(R.string.update_title)
+                .setMessage(msg)
+                .setPositiveButton(R.string.update_now, new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) { downloadAndInstall(url); }
+                })
+                .setNegativeButton(R.string.update_later, null)
+                .show();
+    }
+
+    private void downloadAndInstall(final String url) {
+        if (updateBusy) return;
+        updateBusy = true;
+        showHint(getString(R.string.update_downloading, 0), 3000);
+        updateExec.execute(new Runnable() {
+            @Override public void run() {
+                try {
+                    File apk = new File(getCacheDir(), "update.apk");
+                    HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+                    c.setConnectTimeout(15000);
+                    c.setReadTimeout(30000);
+                    c.setInstanceFollowRedirects(true);
+                    try {
+                        if (c.getResponseCode() != 200) throw new java.io.IOException("HTTP " + c.getResponseCode());
+                        long total = c.getContentLength();
+                        InputStream in = c.getInputStream();
+                        OutputStream out = new FileOutputStream(apk);
+                        byte[] buf = new byte[65536];
+                        long done = 0;
+                        int n, lastPct = -1;
+                        while ((n = in.read(buf)) > 0) {
+                            out.write(buf, 0, n);
+                            done += n;
+                            if (total > 0) {
+                                final int pct = (int) (done * 100 / total);
+                                if (pct / 10 != lastPct / 10) {
+                                    lastPct = pct;
+                                    handler.post(new Runnable() {
+                                        @Override public void run() { showHint(getString(R.string.update_downloading, pct), 3000); }
+                                    });
+                                }
+                            }
+                        }
+                        out.close();
+                        in.close();
+                    } finally {
+                        c.disconnect();
+                    }
+                    installApk(apk);
+                } catch (final Exception ex) {
+                    updateBusy = false;
+                    handler.post(new Runnable() {
+                        @Override public void run() { showHint(getString(R.string.update_failed, String.valueOf(ex.getMessage())), 6000); }
+                    });
+                }
+            }
+        });
+    }
+
+    /** İndirilen APK'yı sistem yükleyicisine verir; Android onay penceresini gösterir. */
+    private void installApk(File apk) throws Exception {
+        PackageInstaller pi = getPackageManager().getPackageInstaller();
+        PackageInstaller.SessionParams params =
+                new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+        int sessionId = pi.createSession(params);
+        PackageInstaller.Session session = pi.openSession(sessionId);
+        try {
+            OutputStream out = session.openWrite("update.apk", 0, apk.length());
+            InputStream in = new FileInputStream(apk);
+            byte[] buf = new byte[65536];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            in.close();
+            session.fsync(out);
+            out.close();
+            Intent i = new Intent(this, MainActivity.class).setAction(ACTION_INSTALL_STATUS);
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0);
+            PendingIntent p = PendingIntent.getActivity(this, sessionId, i, flags);
+            session.commit(p.getIntentSender());
+        } finally {
+            session.close();
+        }
+        handler.post(new Runnable() {
+            @Override public void run() { showHint(getString(R.string.update_installing), 4000); }
+        });
+    }
+
+    private void onInstallStatus(Intent intent) {
+        int status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE);
+        if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            Intent confirm = intent.getParcelableExtra(Intent.EXTRA_INTENT);
+            if (confirm != null) {
+                try {
+                    startActivity(confirm);
+                    return;
+                } catch (Exception ignored) { }
+            }
+        }
+        updateBusy = false;
+        if (status != PackageInstaller.STATUS_SUCCESS) {
+            String m = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
+            showHint(getString(R.string.update_failed, m == null ? String.valueOf(status) : m), 8000);
         }
     }
 
@@ -838,7 +1058,7 @@ public class MainActivity extends Activity {
                 web.evaluateJavascript("String(window.__dtvQ||0)", new ValueCallback<String>() {
                     @Override public void onReceiveValue(String v) {
                         String q = v == null ? "0" : v.replace("\"", "");
-                        if (!"0".equals(q)) showHint("Görüntü kalitesi: " + q + "p", 2000);
+                        if (!"0".equals(q)) showHint(getString(R.string.video_quality, q), 2000);
                     }
                 });
             }
@@ -859,7 +1079,7 @@ public class MainActivity extends Activity {
         int z = (zoomIndex() + 1) % ZOOM_FIT.length;
         prefs.edit().putInt("videoZoom", z).apply();
         applyVideoZoom();
-        showHint("Görüntü: " + ZOOM_NAME[z] + "  •  ▲: değiştir", 1800);
+        showHint(getString(R.string.video_zoom, getResources().getStringArray(R.array.zoom_names)[z]), 1800);
     }
 
     private void applyVideoZoom() {
@@ -934,7 +1154,7 @@ public class MainActivity extends Activity {
                     cssFull = "on".equals(r);
                     if (cssFull) applyVideoZoom();
                     // Video henüz yoksa bekçi kod yüklenince tam ekranı uygular.
-                    if (cssFull && !silent) showHint("Tam ekran  •  ▲: sığdır / doldur / yakınlaştır  •  ▼ veya Geri: çık", 2500);
+                    if (cssFull && !silent) showHint(getString(R.string.hint_fullscreen), 2500);
                 } else {
                     cssFull = false;
                 }
@@ -957,7 +1177,7 @@ public class MainActivity extends Activity {
                 if (value == null) return;
                 String v = value.replace("\"", "");
                 if (v.equals("none") || v.equals("null")) {
-                    showHint("Bu sayfada video bulunamadı", 2000);
+                    showHint(getString(R.string.no_video), 2000);
                     return;
                 }
                 String[] parts = v.split("\\|");
@@ -983,8 +1203,7 @@ public class MainActivity extends Activity {
         prefs.edit().putInt("widthIndex", widthIndex).apply();
         viewportFixes = 0;
         applyViewport();
-        String[] names = {"Büyük", "Normal", "Küçük"};
-        showHint("Yazı boyutu: " + names[widthIndex], 1500);
+        showHint(getString(R.string.text_size, getResources().getStringArray(R.array.text_sizes)[widthIndex]), 1500);
     }
 
     /** Sayfayı TV için sabit bir masaüstü genişliğinde (vars. 1280 px) gösterir. */

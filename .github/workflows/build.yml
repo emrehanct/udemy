@@ -49,11 +49,16 @@ jobs:
       - name: Build APK / APK derle
         env:
           SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
-          TASK: ${{ steps.sign.outputs.signed == 'true' && 'assembleRelease' || 'assembleDebug' }}
+          TASK: ${{ steps.sign.outputs.signed == 'true' && 'assembleGithubRelease bundlePlayRelease' || 'assembleGithubDebug' }}
         run: |
-          gradle "$TASK" --no-daemon --stacktrace
+          gradle $TASK --no-daemon --stacktrace
           mkdir -p out
-          cp app/build/outputs/apk/*/*.apk out/EduCastTV.apk
+          cp app/build/outputs/apk/github/*/*.apk out/EduCastTV.apk
+          # Google Play paketi (AAB) - TV'ye kurulmaz, yalnız Play Console'a yüklenir
+          # Google Play bundle (AAB) - not installable, only for Play Console upload
+          if ls app/build/outputs/bundle/playRelease/*.aab >/dev/null 2>&1; then
+            cp app/build/outputs/bundle/playRelease/*.aab out/EduCastTV-GooglePlay.aab
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
@@ -67,4 +72,4 @@ jobs:
           NOTES: ${{ github.event.head_commit.message }}
           RUN: ${{ github.run_number }}
         run: |
-          gh release create "v$RUN" out/EduCastTV.apk --title "EduCast TV 2.1.$RUN" --notes "${NOTES:-Automatic build}" --latest
+          gh release create "v$RUN" out/EduCastTV.apk out/EduCastTV-GooglePlay.aab --title "EduCast TV 2.1.$RUN" --notes "${NOTES:-Automatic build}" --latest

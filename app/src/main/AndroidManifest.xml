@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Uygulama içi otomatik güncelleme / in-app updates -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Hem TV'de hem telefonda/tablette kurulabilsin -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -12,7 +14,7 @@
         android:banner="@drawable/banner"
         android:hardwareAccelerated="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="Udemy Fans"
+        android:label="@string/app_name"
         android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen">
 
         <activity

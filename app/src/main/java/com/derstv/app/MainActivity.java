@@ -41,6 +41,7 @@ import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import org.json.JSONArray;
@@ -170,7 +171,9 @@ public class MainActivity extends Activity {
         }
         showHint(getString(R.string.hint_welcome), 6000);
         handler.postDelayed(firstRunNotice, 1500);
-        handler.postDelayed(updateCheck, 8000);
+        // Uygulama her açıldığında güncelleme kontrol edilir.
+        prefs.edit().putLong("lastUpdateCheck", 0).apply();
+        handler.postDelayed(updateCheck, 6000);
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -261,7 +264,7 @@ public class MainActivity extends Activity {
                 web.setVisibility(View.INVISIBLE);
                 cursor.bringToFront();
                 menuBar.bringToFront();
-                menuPopup.bringToFront();
+                menuScroll.bringToFront();
                 hint.bringToFront();
             }
 
@@ -425,7 +428,7 @@ public class MainActivity extends Activity {
     }
 
     private void onBackKey() {
-        if (menuPopup.getVisibility() == View.VISIBLE) {
+        if (menuScroll.getVisibility() == View.VISIBLE) {
             hidePopup();
             return;
         }
@@ -712,6 +715,7 @@ public class MainActivity extends Activity {
             } catch (Exception ex) { return; }
         }
         web.evaluateJavascript(subScript + "\n;window.__dtvSub&&window.__dtvSub.setLang('" + subLang() + "');"
+                + "window.__dtvSub&&window.__dtvSub.setSize('" + subSize() + "');"
                 + "window.__dtvSub&&window.__dtvSub.setMode('" + subMode() + "');", null);
     }
 
@@ -879,9 +883,11 @@ public class MainActivity extends Activity {
     private static final String[] SUB_LANGS = {"tr", "en", "de", "fr", "es", "it", "pt", "ru", "ar", "nl"};
     private static final String[] SUB_LANG_NAMES = {"Türkçe", "English", "Deutsch", "Français", "Español",
             "Italiano", "Português", "Русский", "العربية", "Nederlands"};
+    private static final String[] SUB_SIZES = {"0.8", "1", "1.3", "1.6"};
     private static final long MENU_HIDE_MS = 6000;
 
     private LinearLayout menuBar, menuRow, menuPopup;
+    private ScrollView menuScroll;   // açılır liste uzun olursa kaydırılır
     private TextView menuTime;
     private ProgressBar menuProgress;
     private final List<TextView> menuItems = new ArrayList<>();
@@ -894,6 +900,9 @@ public class MainActivity extends Activity {
     private float speed() {
         try { return Float.parseFloat(prefs.getString("speed", "1")); } catch (Exception e) { return 1f; }
     }
+
+    /** Altyazı yazı boyutu çarpanı (varsayılan 1 = orta). */
+    private String subSize() { return prefs.getString("subSize", "1"); }
 
     private String speedStr() { return String.format(Locale.US, "%.2f", speed()); }
 
@@ -955,13 +964,19 @@ public class MainActivity extends Activity {
         root.addView(menuBar, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
 
+        menuScroll = new ScrollView(this);
+        menuScroll.setBackground(roundBg(0xF0202024, 10));
+        menuScroll.setVerticalScrollBarEnabled(true);
+        menuScroll.setFocusable(false);
+        menuScroll.setVisibility(View.GONE);
         menuPopup = new LinearLayout(this);
         menuPopup.setOrientation(LinearLayout.VERTICAL);
-        menuPopup.setBackground(roundBg(0xF0202024, 10));
         menuPopup.setPadding(dp(6), dp(6), dp(6), dp(6));
-        menuPopup.setVisibility(View.GONE);
-        root.addView(menuPopup, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.LEFT));
+        menuScroll.addView(menuPopup);
+        FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.LEFT);
+        slp.topMargin = dp(24);
+        root.addView(menuScroll, slp);
         refreshMenuLabels();
     }
 
@@ -974,7 +989,7 @@ public class MainActivity extends Activity {
         if (!menuVisible()) menuIndex = 2;   // açılınca odak oynat/durdur düğmesinde
         menuBar.setVisibility(View.VISIBLE);
         menuBar.bringToFront();
-        menuPopup.bringToFront();
+        menuScroll.bringToFront();
         hint.bringToFront();
         refreshMenuLabels();
         handler.removeCallbacks(menuTicker);
@@ -996,7 +1011,7 @@ public class MainActivity extends Activity {
 
     private void bumpMenuTimer() {
         handler.removeCallbacks(menuAutoHide);
-        handler.postDelayed(menuAutoHide, menuPopup.getVisibility() == View.VISIBLE ? MENU_HIDE_MS * 2 : MENU_HIDE_MS);
+        handler.postDelayed(menuAutoHide, menuScroll.getVisibility() == View.VISIBLE ? MENU_HIDE_MS * 2 : MENU_HIDE_MS);
     }
 
     private String menuLabel(String id) {
@@ -1023,8 +1038,8 @@ public class MainActivity extends Activity {
         for (int i = 0; i < menuItems.size(); i++) {
             TextView t = menuItems.get(i);
             t.setText(menuLabel(MENU_IDS[i]));
-            boolean sel = i == menuIndex && menuPopup.getVisibility() != View.VISIBLE;
-            boolean open = i == menuIndex && menuPopup.getVisibility() == View.VISIBLE;
+            boolean sel = i == menuIndex && menuScroll.getVisibility() != View.VISIBLE;
+            boolean open = i == menuIndex && menuScroll.getVisibility() == View.VISIBLE;
             t.setBackground(sel ? roundBg(0xFFF26B3A, 8) : open ? roundBg(0x66F26B3A, 8) : null);
             t.setTypeface(null, sel ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
         }
@@ -1056,7 +1071,7 @@ public class MainActivity extends Activity {
     };
 
     private void onMenuOk() {
-        if (menuPopup.getVisibility() == View.VISIBLE) { choosePopup(); return; }
+        if (menuScroll.getVisibility() == View.VISIBLE) { choosePopup(); return; }
         if (!menuVisible()) { showMenu(); return; }
         bumpMenuTimer();
         String id = MENU_IDS[menuIndex];
@@ -1077,7 +1092,7 @@ public class MainActivity extends Activity {
 
     private void onMenuDpad(int code) {
         bumpMenuTimer();
-        if (menuPopup.getVisibility() == View.VISIBLE) {
+        if (menuScroll.getVisibility() == View.VISIBLE) {
             if (code == KeyEvent.KEYCODE_DPAD_UP) { popupIndex = Math.max(0, popupIndex - 1); refreshPopup(); }
             else if (code == KeyEvent.KEYCODE_DPAD_DOWN) { popupIndex = Math.min(popupItems.size() - 1, popupIndex + 1); refreshPopup(); }
             else hidePopup();
@@ -1129,18 +1144,23 @@ public class MainActivity extends Activity {
             addPopupItem(getString(R.string.subs_mode_auto), "mode:auto", "auto".equals(mode));
             addPopupItem(getString(R.string.subs_mode_off), "mode:off", "off".equals(mode));
             addPopupItem(getString(R.string.subs_mode_on), "mode:on", "on".equals(mode));
-            addPopupHeader(getString(R.string.menu_subs_lang));
             int keep = popupIndex;
+            addPopupHeader(getString(R.string.menu_subs_size));
+            String[] sizeNames = getResources().getStringArray(R.array.sub_sizes);
+            String size = subSize();
+            for (int i = 0; i < SUB_SIZES.length; i++) addPopupItem(sizeNames[i], "size:" + SUB_SIZES[i], SUB_SIZES[i].equals(size));
+            addPopupHeader(getString(R.string.menu_subs_lang));
             for (int i = 0; i < SUB_LANGS.length; i++) addPopupItem(SUB_LANG_NAMES[i], "lang:" + SUB_LANGS[i], SUB_LANGS[i].equals(lang));
             popupIndex = keep;   // odak mod seçiminde başlasın
         }
-        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) menuPopup.getLayoutParams();
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) menuScroll.getLayoutParams();
         TextView anchor = menuItems.get(menuIndex);
         lp.leftMargin = Math.max(dp(8), menuBar.getLeft() + menuRow.getLeft() + anchor.getLeft());
         lp.bottomMargin = menuBar.getHeight() - menuRow.getTop() + dp(6);
-        menuPopup.setLayoutParams(lp);
-        menuPopup.setVisibility(View.VISIBLE);
-        menuPopup.bringToFront();
+        menuScroll.setLayoutParams(lp);
+        menuScroll.setVisibility(View.VISIBLE);
+        menuScroll.scrollTo(0, 0);
+        menuScroll.bringToFront();
         refreshPopup();
         refreshMenuLabels();
         bumpMenuTimer();
@@ -1150,11 +1170,20 @@ public class MainActivity extends Activity {
         for (int i = 0; i < popupItems.size(); i++) {
             popupItems.get(i).setBackground(i == popupIndex ? roundBg(0xFFF26B3A, 6) : null);
         }
+        if (popupIndex >= 0 && popupIndex < popupItems.size()) {
+            final TextView sel = popupItems.get(popupIndex);
+            menuScroll.post(new Runnable() {
+                @Override public void run() {
+                    int y = sel.getTop() - menuScroll.getHeight() / 2 + sel.getHeight() / 2;
+                    menuScroll.smoothScrollTo(0, Math.max(0, y));
+                }
+            });
+        }
     }
 
     private void hidePopup() {
-        if (menuPopup == null || menuPopup.getVisibility() != View.VISIBLE) return;
-        menuPopup.setVisibility(View.GONE);
+        if (menuScroll == null || menuScroll.getVisibility() != View.VISIBLE) return;
+        menuScroll.setVisibility(View.GONE);
         popupKind = null;
         refreshMenuLabels();
     }
@@ -1172,6 +1201,13 @@ public class MainActivity extends Activity {
             showHint(getString(R.string.video_zoom, getResources().getStringArray(R.array.zoom_names)[Integer.parseInt(v)]), 1500);
         } else if (v.startsWith("mode:")) {
             setSubMode(v.substring(5));
+        } else if (v.startsWith("size:")) {
+            String k = v.substring(5);
+            prefs.edit().putString("subSize", k).apply();
+            injectSubtitles(web.getUrl());
+            web.evaluateJavascript("window.__dtvSub&&window.__dtvSub.setSize('" + k + "')", null);
+            int idx = java.util.Arrays.asList(SUB_SIZES).indexOf(k);
+            showHint(getString(R.string.subs_size_set, getResources().getStringArray(R.array.sub_sizes)[Math.max(0, idx)]), 2000);
         } else if (v.startsWith("lang:")) {
             prefs.edit().putString("subLang", v.substring(5)).apply();
             if ("off".equals(subMode())) prefs.edit().putString("subMode", "auto").apply();
@@ -1224,7 +1260,10 @@ public class MainActivity extends Activity {
     // ------------------------------------------------------------------ auto update
 
     private static final String ACTION_INSTALL_STATUS = "io.github.tsemre.educasttv.INSTALL_STATUS";
-    private static final long UPDATE_INTERVAL_MS = 6L * 60 * 60 * 1000;
+    /** Uygulama açılışında her zaman; arka plandan dönüşte en fazla 10 dakikada bir kontrol. */
+    private static final long UPDATE_INTERVAL_MS = 10L * 60 * 1000;
+    /** "Sonra" denilen sürüm, uygulama kapanana kadar tekrar sorulmaz. */
+    private int dismissedBuild = 0;
     private final ExecutorService updateExec = Executors.newSingleThreadExecutor();
     private boolean updateBusy = false;
 
@@ -1241,7 +1280,7 @@ public class MainActivity extends Activity {
                     try {
                         JSONObject rel = new JSONObject(httpGet("https://api.github.com/repos/" + repo + "/releases/latest"));
                         int latest = parseBuildNumber(rel.optString("tag_name"));
-                        if (latest <= currentVersionCode()) return;
+                        if (latest <= currentVersionCode() || latest == dismissedBuild) return;
                         String apkUrl = null;
                         JSONArray assets = rel.optJSONArray("assets");
                         for (int i = 0; assets != null && i < assets.length(); i++) {
@@ -1258,7 +1297,7 @@ public class MainActivity extends Activity {
                         if (body.length() > 600) body = body.substring(0, 600) + "…";
                         final String notes = body;
                         handler.post(new Runnable() {
-                            @Override public void run() { showUpdateDialog(name, notes, url); }
+                            @Override public void run() { showUpdateDialog(name, notes, url, latest); }
                         });
                     } catch (Exception ignored) {
                         // Ağ yoksa bir sonraki açılışta tekrar denenir.
@@ -1283,7 +1322,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void showUpdateDialog(String name, String notes, final String url) {
+    private void showUpdateDialog(String name, String notes, final String url, final int build) {
         if (isFinishing()) return;
         String msg = getString(R.string.update_message, name) + (notes.isEmpty() ? "" : "\n\n" + notes);
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
@@ -1292,7 +1331,9 @@ public class MainActivity extends Activity {
                 .setPositiveButton(R.string.update_now, new DialogInterface.OnClickListener() {
                     @Override public void onClick(DialogInterface d, int w) { downloadAndInstall(url); }
                 })
-                .setNegativeButton(R.string.update_later, null)
+                .setNegativeButton(R.string.update_later, new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) { dismissedBuild = build; }
+                })
                 .show();
     }
 
